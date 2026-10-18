@@ -3,6 +3,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# packed release artifacts (attach these to a GitHub Release, never commit them)
+*.tgz
+*.tar.gz
+
 # local runtime state
 *.log
 .dsh/

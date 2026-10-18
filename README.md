@@ -19,33 +19,57 @@
 
 ## 安装三步
 
-安装入口是 **DSH 内部的一次工具调用**（`plugin_manager`），不是终端命令。本目录**不是 git 工作树、没有远程仓库（remote）、也没有发布到任何 registry** —— 所以本文档**不提供**下载 URL、npm 包名、版本锁定或发布产物校验和的写法：你拿到的是这份目录本身（或别人给你的打包副本），校验和请在你自己的副本上用下面的 `npm run smoke:artifact` 现算。
+安装入口是一次 **DSH 内部操作**：图形界面里是 **设置 → 插件 → 添加插件**；由助手代劳时就是 `plugin_manager({ action: "install_bundle", target: "<地址>" })`。它**不是**终端命令。
 
-先确认三件事：
+源码公开在 GitHub：<https://github.com/YuumaKobayashi/dsh-trading-mode>，每个版本对应一个 git tag（当前 `v0.8.1`）。本项目**没有发布到 npm registry**，所以按包名安装的 `npm install dsh-trading-mode` **不存在**；能装的是「地址」形式 —— Release 产物的 `.tgz` 网址、Git 仓库地址，或本地目录（见步骤 1）。
+
+先确认四件事：
 
 - **运行环境**：这是一个 DSH **bundle**，必须由宿主加载、**不能独立运行**；`package.json` 声明 `engines.node >= 20`（Node 20 或更高），而实测过的是 Node `v24.15.0` + DSH `0.2.0-rc.2` 与 `0.2.1-rc.2`（完整矩阵见「兼容性」）。
 - **当前运行的是哪个 profile**：DSH 可以有多个 profile，插件管理器只作用于**当前运行的那个**。装错 profile 的典型症状是「Loader 里没有这一行、页面上也没有按钮」，而日志里往往什么也看不到。
-- **`target` 必须是绝对路径**：`~` 不会被展开。
+- **地址的写法**：本地目录必须是**绝对路径**（`~` 不会展开）；网址形式（A / B）不需要路径。
+- **装完怎么验证**：见步骤 3（顶栏按钮 + `GET /api/trading/health`）；有本地副本时还可跑两个只读检查 —— `npm run inspect:profile`（哪些 profile 加载了这份代码）与 `npm run verify:install`（逐字节比对 profile 里的副本，等价于 `npm test` 之外的另一道 verify 门禁）。
 
-**步骤 1 — 拿到目录，确定它的绝对路径。**
+**步骤 1 — 选一种安装来源。**
 
-把这份 `dsh-trading-mode` 目录放在本机任意位置（例如 `<你的插件目录>\dsh-trading-mode`）。可以先用只读检查看现状：
+A. **Release 里的 `.tgz`（推荐：目标机器不需要 git）**
 
 ```text
-npm run inspect:profile
+https://github.com/YuumaKobayashi/dsh-trading-mode/releases/download/v0.8.1/dsh-trading-mode-0.8.1.tgz
 ```
 
-不要执行 `npm install dsh-trading-mode`、`npx dsh …` 或 `dsh plugin install …` —— 这三条命令都不存在，本仓库也没有任何已发布的包名可以这样装（`npm install` 只装开发依赖，见「开发与文档索引」，它**不是**安装插件的方式）。
+就是 `npm pack` 的产物（74 个文件、纯 JS、没有构建步骤）；目标机器只要能访问 github.com 即可。
 
-**步骤 2 — 在 DSH 里安装：一次受审批的工具调用。**
+B. **Git 仓库地址（目标机器需要装有 git）**
 
 ```text
-plugin_manager({ action: "install_bundle", target: "<PATH TO YOUR COPY>" })   // 换成你的绝对路径
+github:YuumaKobayashi/dsh-trading-mode#v0.8.1
+```
+
+也可以写成 `https://github.com/YuumaKobayashi/dsh-trading-mode#v0.8.1`。`#` 后面是 tag 或分支：写 tag 才是可复现的版本，不写会装 `main` 的最新提交。
+
+C. **本地目录（离线 / 开发用）**
+
+```text
+<你的插件目录>\dsh-trading-mode        // 绝对路径
+```
+
+不要执行 `npm install dsh-trading-mode`、`npx dsh …` 或 `dsh plugin install …` —— 这三条命令都不存在，本仓库也没有任何已发布的包名可以这样装；`npm install <tgz 网址>` 只会把包装进普通 Node 项目的 `node_modules`，**不会**让 DSH 加载它（`npm install` 只装开发依赖，见「开发与文档索引」，它**不是**安装插件的方式）。
+
+**步骤 2 — 在 DSH 里安装。**
+
+图形界面：**设置 → 插件 → 添加插件 → 安装第三方插件**，在 **Package name or address** 输入框里粘贴步骤 1 的一种地址，点 **Install plugin**。
+
+由助手代劳时（`target` 换成你要用的地址）：
+
+```text
+plugin_manager({ action: "install_bundle", target: "https://github.com/YuumaKobayashi/dsh-trading-mode/releases/download/v0.8.1/dsh-trading-mode-0.8.1.tgz" })
 ```
 
 - 插件管理属于**受审批操作**：DSH 会先向你请求许可，批准后才执行。
 - 安装动作由 **DSH 自己**完成：它会写当前 profile 的 `package.json` 与 `cordis.patch.yml`（本 bundle 的 patch 入口是包内的 `cordis.patch.yml`）。**不要手改 profile** —— 不要往 `cordis.yml`、profile 的 `package.json` 或 `dsh.profile.bundles` 里手动加行；手动写出来的半装状态正是「装错 profile / Loader 里没有这一行」的主要来源。
 - 宿主侧代码只在 DSH 进程启动时加载：装完**重启一次 DSH**；客户端 bundle 按请求提供，浏览器刷新即可。
+- 用 A / B 装时，版本兼容性检查发生在**安装完成之后**（只有按包名从 registry 装才能安装前预检），所以装完请照步骤 3 确认。
 
 **步骤 3 — 确认已加载。**
 
@@ -55,7 +79,7 @@ plugin_manager({ action: "install_bundle", target: "<PATH TO YOUR COPY>" })   //
 
 ### 升级 / 禁用 / 卸载
 
-- **升级**：对新的目录再调一次 `install_bundle`（`target` 指向新副本），然后重启 DSH。自选、偏好与缓存都在 bundle **之外**，升级不会丢。
+- **升级**：用新版本的地址再装一次（`#v0.8.2` 或新版 `.tgz` 网址；本地目录则指向新副本），然后重启 DSH。自选、偏好与缓存都在 bundle **之外**，升级不会丢。
 - **禁用（不删除）**：`plugin_manager({ action: "set_bundle", target: "dsh-trading-mode", enabled: false })`。
 - **卸载**：`plugin_manager({ action: "remove_bundle", target: "dsh-trading-mode" })`，然后重启 DSH。
 - **卸载不删数据**：自选 / 偏好 / 行情缓存 / 目录快照都在 bundle **之外**的 `<DSH_HOME>/trading-mode/`（`<DSH_HOME>` = `$DSH_HOME`，否则 `$DSH_DIR`，否则 `~/.dsh`；路径解析见 `lib/index.js` 的 `resolveHomeDir()`）。`remove_bundle` 只移除插件，**不会**删除这些文件；要彻底清理需要你手动删该目录，或按 [docs/PRIVACY.md](docs/PRIVACY.md) 的流程处理。
@@ -190,7 +214,7 @@ npm run smoke:artifact    # scripts/smoke-artifact.mjs：打包产物并审计�
 
 `npm install` 在这里的意义只有一个：装**开发与测试依赖**（`react`、`react-dom`、`zod`）。它**不是安装插件的方式**（安装见「安装三步」）。不装 devDependencies 时客户端套件会 SKIP（缺 `react`），`npm test` 仍容忍该 SKIP，但**发布门禁 `npm run test:release` 会因此判失败**。
 
-仓库已提交 `package-lock.json`，复现安装请用 `npm ci`；由于 `@deepseek-ai/cordis`（以及可选 `dsh-*` peer）由 DSH 运行时提供、并不在公共 registry 上，npm 的 peer 解析需要显式放行：
+仓库已提交 `package-lock.json`，复现安装请用 `npm ci`；由于 `@deepseek-ai/cordis` 与可选的 `dsh-*` peer 由 DSH 运行时提供、不是本包的运行时依赖，npm 的 peer 解析需要显式放行，否则它会尝试从 registry 另装一份：
 
 ```text
 npm ci --legacy-peer-deps
