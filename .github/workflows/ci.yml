@@ -16,10 +16,13 @@
 #                  must quote. Any of these failing fails the pull request.
 #   * NON-BLOCKING — `npm run test:network` drives live third-party market-data
 #                  sites. Outages, rate limits and stale upstream shapes are
-#                  expected (they are reported as DEGRADED, not as defects), so it
-#                  runs as its own job marked `continue-on-error: true` and never
-#                  fails the build. `npm run verify:install` is intentionally NOT
-#                  run here: it inspects an installed DSH profile on a developer
+#                  expected (they are reported as DEGRADED, not as defects). The
+#                  job sets DSH_TRADING_PROBE_NONBLOCKING=1, so the probe keeps
+#                  printing its FAIL lines and writing its report file but exits
+#                  0: the build stays green while the log still records what the
+#                  live sites did. `continue-on-error: true` is the belt to that
+#                  suspenders. `npm run verify:install` is intentionally NOT run
+#                  here: it inspects an installed DSH profile on a developer
 #                  machine and cannot work on a clean runner.
 #
 # Dependencies
@@ -34,14 +37,16 @@
 # missing one produces, so on a runner the install must succeed anyway.
 # `--legacy-peer-deps` is required: the host contract peer `@deepseek-ai/cordis`
 # and the optional `@deepseek-ai/dsh-*` services are provided by the DSH runtime
-# that loads this plugin, not by a registry tree, so the lockfile pins the
-# devDependencies only and no peer is installed here on purpose (the plugin must
-# keep zero runtime dependencies). `--cache` keeps npm's cache inside the runner
-# temp dir instead of a user profile.
+# that loads this plugin — they are host contract, not installable dependencies —
+# so the lockfile pins the devDependencies only and no peer is installed on
+# purpose (the plugin must keep zero runtime dependencies, and letting npm resolve
+# the peer makes the install depend on registry reachability). `--cache` keeps
+# npm's cache inside the runner temp dir instead of a user profile.
 #
-# The engine floor is Node 20 (`engines.node`); the matrix lists the floor and
-# the next LTS. The first run of this workflow on a runner is still pending, so
-# Node 20/22 remain declared-but-unmeasured until it reports green.
+# The engine floor is Node 20 (`engines.node`); the matrix lists the floor and the
+# next LTS. The workflow has run on a GitHub runner: the blocking `offline` job is
+# what proves Node 20/22, and the live probe job reports its findings without
+# failing the build (see DSH_TRADING_PROBE_NONBLOCKING above).
 
 name: ci
 
@@ -97,5 +102,7 @@ jobs:
       - name: install the locked dev dependencies
         run: npm ci --legacy-peer-deps --no-audit --no-fund --cache "$RUNNER_TEMP/npm-cache"
 
-      - name: live provider probe (never fails the build)
+      - name: live provider probe (reports failures, never fails the build)
         run: npm run test:network
+        env:
+          DSH_TRADING_PROBE_NONBLOCKING: '1'

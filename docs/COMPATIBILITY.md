@@ -197,6 +197,11 @@ JSON 兜底就是本机文件，始终留在本机。不要把「另一台电脑
 32 个 packed `lib/**/*.js` 全部通过 `node --check`）。`sha256` 随源码变动而变，因此本文件不固化该值，
 每个 release 以当次输出为准（`docs/RELEASING.md` §5）。
 
-- `tests/network/host.test.mjs`（在线探针，非阻断）：**本次实测** `95/95 PASS, 0 failed, 10 degraded`，exit `0`
+- `tests/network/host.test.mjs`（在线探针，非阻断）：本机实测 `95/95 PASS, 0 failed, 10 degraded`，exit `0`
   （上游不可达项按 `DEGRADED` 记，provider health 全部 `healthy`）；该退出码不参与门禁。
+  GitHub runner 首跑为 `88/95`，7 项失败全部是环境差异（provider 主机 DNS 被过滤、港股 1 年窗口只有
+  247 根日线、Yahoo 报价缺 `previousClose`、VIX 由另一个 fallback feed 供给、目录 venue 被上游写成
+  `NasdaqGS`）。这些断言已改为「上游不可达则 `DEGRADED`、venue 比较族名、报价缺字段则跳过算术」；
+  同时 CI 的 probe 步骤设置 `DSH_TRADING_PROBE_NONBLOCKING=1`，扫描结果照常打印、退出码为 `0`，
+  不再把死掉的第三方站点变成构建红叉（本地直接运行仍是严格退出码）。
 - 其余未实测项均只出现在「未验证的环境」里，不在支持范围内。
