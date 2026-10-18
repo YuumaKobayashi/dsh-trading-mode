@@ -1,0 +1,106 @@
+{
+  "name": "dsh-trading-mode",
+  "version": "0.8.1",
+  "description": "DSH Trading Mode — AI 驱动的行情研究 / Watchlist 助手（美股 + 港股 + A 股 + 日股 + 加密货币）：五市场清单浏览、股票搜索、行情、市场指数、K 线、技术指标、DeepSeek 单股分析与 Watchlist Brief，中英双语界面，并提供 TradingView 内嵌图表与数据来源页面跳转。只做研究，不做交易。",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "trading",
+    "trading-mode",
+    "market-data",
+    "market-index",
+    "vix",
+    "watchlist",
+    "stock-universe",
+    "listing-directory",
+    "quote",
+    "candles",
+    "technical-indicators",
+    "tradingview",
+    "web-ui",
+    "cordis",
+    "react"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "docs",
+    "scripts",
+    "tests",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node tests/offline/run.mjs",
+    "test:offline": "node tests/offline/run.mjs",
+    "test:release": "node tests/offline/run.mjs --release",
+    "test:client": "node tests/offline/client.test.mjs",
+    "test:ai": "node tests/offline/ai.test.mjs",
+    "test:config": "node tests/offline/config.test.mjs",
+    "test:transport": "node tests/offline/transport.test.mjs",
+    "test:limits": "node tests/offline/limits.test.mjs",
+    "test:router": "node tests/offline/router.test.mjs",
+    "test:api": "node tests/offline/api.test.mjs",
+    "test:fence": "node tests/offline/fence.test.mjs",
+    "test:identity": "node tests/offline/identity.test.mjs",
+    "test:watchlist": "node tests/offline/watchlist.test.mjs",
+    "test:repo": "node tests/offline/repo.test.mjs",
+    "test:network": "node tests/network/host.test.mjs",
+    "check": "node tests/offline/syntax.test.mjs",
+    "verify:install": "node tests/network/verify-install.mjs",
+    "inspect:profile": "node scripts/inspect-profile.mjs",
+    "smoke:artifact": "node scripts/smoke-artifact.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-anonymous-user-id": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-storage-domain": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-anonymous-user-id": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-storage-domain": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zod": "^3.23.8"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

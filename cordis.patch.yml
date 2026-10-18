@@ -1,0 +1,19 @@
+# ============================================================================
+# dsh-trading-mode 的 bundle patch —— 把 Trading 模式插件挂进 DSH 配置树
+# ============================================================================
+# - insert：往配置树里追加插件行（entry）
+# - id：行标识（patch 覆盖时按它定位）
+# - name: 'dsh-trading-mode' 会解析包入口 lib/index.js（宿主半侧）
+# - 因 package.json 声明了 dsh.client，DSH 模块系统同时会把本包扫描为
+#   “浏览器插件”，提供 /plugins/dsh-trading-mode/client.js 给页面
+# ============================================================================
+
+- insert:
+    - id: trading-mode
+      name: 'dsh-trading-mode'
+      # 可选配置（缺失即用出厂默认；非法值不会生效，会写日志并保留默认）：
+      # config:
+      #   providers:                      # 覆盖各市场的数据源顺序
+      #     US: [yahoo, eastmoney, tencent, sina, stooq]
+      #     HK: [eastmoney, tencent, sina]
+      #   networkMode: auto               # auto | standard | compatibility

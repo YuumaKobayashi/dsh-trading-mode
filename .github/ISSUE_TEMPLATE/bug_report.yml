@@ -1,0 +1,211 @@
+name: Bug report
+description: Something in Trading Mode is wrong, missing, or crashes — a panel, a market, a provider, or the API.
+title: '[bug] '
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Please report **only behaviour you actually
+        observed** on your own machine — no guesses, no reconstructed log lines.
+
+        Keep this report free of secrets: no API keys, no tokens, no session cookies, and no
+        contents of your watchlist or profile. Replace any local path with
+        `<your profile>` or `<path to the plugin checkout>`.
+
+        Trading Mode is a research panel. It reads public market data and never places an order,
+        so reports about trades, brokerage accounts, or order execution are out of scope.
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: Plugin version
+      description: The `version` field in the plugin's `package.json` (this repository is 0.7.0).
+      placeholder: '0.7.0'
+    validations:
+      required: true
+
+  - type: input
+    id: dsh_version
+    attributes:
+      label: DSH version
+      description: The harness version you are running, as reported by DSH itself (for example `0.2.0-rc.2`).
+      placeholder: '0.2.0-rc.2'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: How the plugin was installed
+      description: The plugin is installed through the harness's own plugin manager, not through npm.
+      options:
+        - '`plugin_manager` with `action: "install_bundle"` and the absolute plugin directory as `target`'
+        - A junction/symlink into `<your profile>` plus a plugin row in `cordis.yml` (manual development install)
+        - Other (explain under "Anything else")
+    validations:
+      required: true
+
+  - type: input
+    id: install_target
+    attributes:
+      label: Where the plugin directory lives
+      description: Redacted form is expected. Never paste your real user name or profile path.
+      placeholder: '<path to the plugin checkout>'
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      description: For example `Windows 11 (build 26100)`, `macOS 15.1`, `Ubuntu 24.04`, `WSL2 on Windows 11`.
+      placeholder: 'Windows 11 (build 26100)'
+    validations:
+      required: true
+
+  - type: input
+    id: node_version
+    attributes:
+      label: Node.js version
+      description: The output of `node -v` for the interpreter DSH is actually running on (DSH requires Node >= 20).
+      placeholder: 'v24.15.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: market
+    attributes:
+      label: Market
+      description: Which market was the panel showing when it went wrong?
+      options:
+        - US
+        - HK
+        - CN
+        - JP
+        - CRYPTO
+        - Not market-specific (panel did not open, settings, watchlist storage)
+    validations:
+      required: true
+
+  - type: input
+    id: provider
+    attributes:
+      label: Provider
+      description: >-
+        The upstream that answered or failed, if you know it (`yahoo`, `stooq`, `eastmoney`,
+        `tencent`, `sina`, `nasdaq`, `binance`, `gate`, `coinlore`). `GET /api/trading/status`
+        lists the per-provider health scopes. Write `unknown` if you cannot tell.
+      placeholder: 'eastmoney'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: panel
+    attributes:
+      label: Which part of the panel
+      description: Where in the UI the problem showed up.
+      options:
+        - Search
+        - Quote / quote card
+        - Candles / chart
+        - Technical indicators
+        - Market indices or the crypto spotlight
+        - Stock universe / listings browse
+        - Company profile
+        - AI analysis (single stock)
+        - Watchlist (list, add, remove, reorder, brief)
+        - Panel did not open at all
+        - Not applicable / API-only
+    validations:
+      required: true
+
+  - type: input
+    id: route
+    attributes:
+      label: Route or request
+      description: >-
+        The API route or UI action involved, for example `GET /api/trading/quote/AAPL`,
+        `GET /api/trading/status`, the Watchlist, or the AI analysis. Include the exact path and
+        query string, with no personal data in it.
+      placeholder: 'GET /api/trading/quote/AAPL'
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Exact error text or HTTP status
+      description: >-
+        Paste the literal error body, code, and HTTP status you saw — do not summarise it.
+        Codes that exist include `HOST_SECURITY_UNAVAILABLE`, `RATE_LIMITED`, `DATA_UNAVAILABLE`
+        and `AI_UNAVAILABLE`.
+      placeholder: |
+        HTTP 503
+        {"ok":false,"error":{"code":"DATA_UNAVAILABLE","message":"…"}}
+    validations:
+      required: true
+
+  - type: textarea
+    id: health
+    attributes:
+      label: Health / status output
+      description: >-
+        Did `GET /api/trading/health` answer? Paste what it returned, or the exact status and body
+        if it refused. If you are on a version that does not expose `/health`, say so and paste the
+        relevant part of `GET /api/trading/status` instead (`providers[].scopes`, `transport`,
+        `providerChains`, `networkMode`, `ai.reason`). `/status` redacts upstream URLs, IPs and
+        local paths, so it is the safest thing to paste.
+      placeholder: |
+        GET /api/trading/health → <paste the body or the HTTP status here>
+        GET /api/trading/status → <the relevant part>
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: The result you were expecting, in one or two sentences.
+      placeholder: 'The quote card for AAPL should have rendered a price and a timestamp.'
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happened
+      description: What the panel or the API did instead. If it is reproducible, give the steps in order.
+      placeholder: |
+        1. Opened a session and clicked Trading Mode.
+        2. Searched AAPL and opened the quote card.
+        3. The card stayed empty and the request above was returned.
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >-
+        Optional. Relevant context only: whether the same symbol works in another market, whether
+        the problem started after an upgrade, whether another browser gives the same result.
+      placeholder: 'Optional.'
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Before you submit
+      description: Please read each line; an unchecked box means the report cannot be used.
+      options:
+        - label: I confirm my report contains no watchlist contents, no profile paths, and no personal data.
+          required: true
+        - label: I confirm my report contains no API keys, tokens, session cookies, or other secrets.
+          required: true
+        - label: Everything I wrote describes behaviour I actually observed on my machine, on the version recorded above.
+          required: true
+        - label: I understand that Trading Mode only performs research and never places trades, so trading-behaviour reports are out of scope.
+          required: true

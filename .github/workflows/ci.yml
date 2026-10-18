@@ -1,0 +1,101 @@
+# CI for dsh-trading-mode.
+#
+# Blocking vs non-blocking
+# ------------------------
+#   * BLOCKING   — `npm ci` installs the committed lockfile tree exactly;
+#                  `npm run check` proves every file under lib/ parses;
+#                  `npm run test:release` is the release gate and runs the 13
+#                  offline suites — syntax, config, transport, limits, router,
+#                  api, fence, identity, watchlist, ai, client, release-scripts,
+#                  repo — treating a SKIP as a failure, because the gate only
+#                  passes when every check actually ran; `npm run smoke:artifact`
+#                  packs the tarball, unpacks it in the runner temp dir and
+#                  re-checks the bytes that will ship (required members, no
+#                  machine state, no absolute local path, every packed lib file
+#                  parses) and prints the tarball sha256 that the release notes
+#                  must quote. Any of these failing fails the pull request.
+#   * NON-BLOCKING — `npm run test:network` drives live third-party market-data
+#                  sites. Outages, rate limits and stale upstream shapes are
+#                  expected (they are reported as DEGRADED, not as defects), so it
+#                  runs as its own job marked `continue-on-error: true` and never
+#                  fails the build. `npm run verify:install` is intentionally NOT
+#                  run here: it inspects an installed DSH profile on a developer
+#                  machine and cannot work on a clean runner.
+#
+# Dependencies
+# ------------
+# `package-lock.json` is committed, so installation is `npm ci`: it either
+# installs the locked tree (react / react-dom / zod and their transitive
+# dependencies) or it fails. The install step is blocking on purpose — a
+# best-effort install only moves the failure down to the gate, where a missing
+# dependency shows up as "skipped checks" with worse diagnostics. The
+# devDependencies are the client render suite's react/react-dom and the
+# watchlist storage-domain suite's zod; the release gate refuses the SKIP that a
+# missing one produces, so on a runner the install must succeed anyway.
+# `--legacy-peer-deps` is required: the host contract peer `@deepseek-ai/cordis`
+# and the optional `@deepseek-ai/dsh-*` services are provided by the DSH runtime
+# that loads this plugin, not by a registry tree, so the lockfile pins the
+# devDependencies only and no peer is installed here on purpose (the plugin must
+# keep zero runtime dependencies). `--cache` keeps npm's cache inside the runner
+# temp dir instead of a user profile.
+#
+# The engine floor is Node 20 (`engines.node`); the matrix lists the floor and
+# the next LTS. The first run of this workflow on a runner is still pending, so
+# Node 20/22 remain declared-but-unmeasured until it reports green.
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: offline suite (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - name: check out the plugin
+        uses: actions/checkout@v4
+
+      - name: set up node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: install the locked dev dependencies (blocking)
+        run: npm ci --legacy-peer-deps --no-audit --no-fund --cache "$RUNNER_TEMP/npm-cache"
+
+      - name: syntax and module shape (blocking)
+        run: npm run check
+
+      - name: release gate — 13 offline suites, no skipped checks (blocking)
+        run: npm run test:release
+
+      - name: packed-artifact smoke — shippable tarball and its sha256 (blocking)
+        run: npm run smoke:artifact
+
+  network-probe:
+    name: live provider probe (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: check out the plugin
+        uses: actions/checkout@v4
+
+      - name: set up node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: install the locked dev dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund --cache "$RUNNER_TEMP/npm-cache"
+
+      - name: live provider probe (never fails the build)
+        run: npm run test:network

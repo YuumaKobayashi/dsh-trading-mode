@@ -1,0 +1,19 @@
+# dependencies / build output (this package ships source only)
+node_modules/
+dist/
+*.tsbuildinfo
+
+# local runtime state
+*.log
+.dsh/
+.trading-research/
+data/
+cache/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp

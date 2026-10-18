@@ -1,0 +1,25 @@
+# Issue template chooser for dsh-trading-mode.
+#
+# Blank issues stay enabled so an operator can report an upstream or environment problem that
+# does not fit either form. Project documentation is linked in-repository only, so the link
+# keeps working in a fork, a clone and an offline checkout.
+
+blank_issues_enabled: true
+
+contact_links:
+  - name: Install, configuration and troubleshooting guide
+    url: ./blob/HEAD/docs/TROUBLESHOOTING.md
+    about: >-
+      Start here for a panel that does not open, a missing Trading Mode button, an install that
+      landed in the wrong profile, or a provider that stopped answering. Includes the /status
+      fields worth pasting into an issue.
+  - name: Supported environments and provider capability
+    url: ./blob/HEAD/docs/COMPATIBILITY.md
+    about: >-
+      What has actually been measured, and what is explicitly not verified. Check a platform here
+      before reporting that a platform does not work.
+  - name: Data sources, compliance boundary and privacy
+    url: ./blob/HEAD/docs/DATA_COMPLIANCE.md
+    about: >-
+      The nine public providers the plugin reads, the rules the code enforces, and the limits a
+      new data source would have to respect.

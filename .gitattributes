@@ -1,0 +1,17 @@
+# Keep every text file LF in the repository *and* in the working tree on every
+# platform. The release gates, the artifact smoke and CI all read the same text
+# on Windows and on Linux, so mixed line endings are a bug farm: a Windows
+# checkout would otherwise rewrite 83 files to CRLF, change their hashes and
+# make `npm run smoke:artifact` / `verify:install` compare different bytes.
+* text=auto eol=lf
+
+# Never let Git touch the bytes of binary artifacts.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.tgz binary
+*.zip binary
+*.woff binary
+*.woff2 binary

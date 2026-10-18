@@ -1,0 +1,121 @@
+name: Feature request
+description: Suggest a capability, a market, a panel, or a data source for Trading Mode.
+title: '[feature] '
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the **problem first**. A request that starts from a real research task is
+        much easier to evaluate than a request that starts from a proposed implementation.
+
+        Trading Mode is **research only**. There is no order placement, no position or P&L
+        tracking, no brokerage integration and no automated execution in this plugin, and trading
+        or order functionality will not be added. Requests outside that boundary will be closed.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What are you trying to find out or decide, and what stops you today? Describe the research
+        task, not the feature.
+      placeholder: 'I want to compare two CN symbols on the same daily window, but the panel only shows one symbol at a time.'
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: What should the panel or the API do instead? Concrete is better than general.
+      placeholder: 'A "compare" control that overlays up to three normalised candle series on one chart.'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: market
+    attributes:
+      label: Market
+      description: Which market does this affect?
+      options:
+        - US
+        - HK
+        - CN
+        - JP
+        - CRYPTO
+        - Several markets
+        - Market-independent (panel, storage, language, configuration)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: panel
+    attributes:
+      label: Which part of the panel
+      description: Where would this capability live?
+      options:
+        - Search
+        - Quote / quote card
+        - Candles / chart
+        - Technical indicators
+        - Market indices or the crypto spotlight
+        - Stock universe / listings browse
+        - Company profile
+        - AI analysis (single stock)
+        - Watchlist (list, add, remove, reorder, brief)
+        - Storage, settings or configuration
+        - New panel or new surface
+    validations:
+      required: true
+
+  - type: dropdown
+    id: new_source
+    attributes:
+      label: Does this need a new upstream data source?
+      description: >-
+        A new source is a compliance change, not only a code change: every provider must pass the
+        review recorded in `docs/DATA_COMPLIANCE.md` (public unauthenticated endpoint, no login,
+        no paywall or CAPTCHA bypass, no redistribution, and terms the operator is responsible for).
+        There are nine providers today, and adding a tenth means re-reading the boundary document.
+      options:
+        - 'No — it reuses data the plugin already fetches (a provider in `lib/trading/config.js`)'
+        - 'Yes — it needs a new upstream source or endpoint'
+        - 'Not sure'
+    validations:
+      required: true
+
+  - type: textarea
+    id: source_details
+    attributes:
+      label: Source details
+      description: >-
+        Required if the answer above is "Yes". Which upstream would provide it, and is the page or
+        endpoint public? Does it need a key or a login, or does it forbid programmatic access? Does
+        it cover one of the five supported markets (US / HK / CN / JP / CRYPTO) or a new one?
+      placeholder: |
+        Host / endpoint:
+        Public and unauthenticated, or requires credentials:
+        Market and data it provides:
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This request stays inside the research-only boundary — it asks for no order placement, no position tracking and no broker integration.
+          required: true
+        - label: I understand a new upstream source must survive the compliance review in `docs/DATA_COMPLIANCE.md` before it can ship.
+          required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. Other ways you tried to get the same answer, including outside the panel.
+      placeholder: 'Optional.'
+    validations:
+      required: false
