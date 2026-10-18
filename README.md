@@ -2,7 +2,7 @@
 
 **本地运行、由 DSH（DeepSeek Harness）宿主承载的行情研究面板**：覆盖美股（US）、港股（HK）、A 股（CN）、日股（JP）与加密货币（CRYPTO）**五个市场**，提供报价、K 线、技术指标与公司档案，外加一个跑在宿主 `llm` 服务上的 AI 分析。当前版本 **`0.8.1`，处于 Beta / 0.x 阶段** —— 版本号一律以 `package.json` 为准，运行时可用围栏无关的 `GET /api/trading/health` 读到。它**不下任何订单**，也不提供投资建议：所有内容仅供个人研究。
 
-## 使用限制（先说不支持什么）
+## 使用限制
 
 - **不下单、不接券商**：插件没有任何能触达市场的写操作，也没有持仓、盈亏、组合与回测。
 - **不保证实时**：数据来自第三方公开网页接口，通常有延迟。每条行情都带时间戳与新鲜度：`Updated HH:MM:SS` + `Data may be delayed`，用过期缓存时标 `Last available data`。时效分级是 **`fresh`（≤5 分钟）/ `delayed`（≤30 分钟）/ `stale`（≤24 小时）/ `historical`（更旧）**；界面**从不**标注 Live / Real-time / Tick-level，也**不承诺** tick / Level-2 / 全市场覆盖。同一时刻只显示一种状态 —— `Updated` 与 `Last available data` 不会同时出现。
