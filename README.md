@@ -21,7 +21,7 @@
 
 安装入口是一次 **DSH 内部操作**：图形界面里是 **设置 → 插件 → 添加插件**；由助手代劳时就是 `plugin_manager({ action: "install_bundle", target: "<地址>" })`。它**不是**终端命令。
 
-源码公开在 GitHub：<https://github.com/YuumaKobayashi/dsh-trading-mode>，每个版本对应一个 git tag（当前 `v0.8.1`）。本项目**没有发布到 npm registry**，所以按包名安装的 `npm install dsh-trading-mode` **不存在**；能装的是「地址」形式 —— Release 产物的 `.tgz` 网址、Git 仓库地址，或本地目录（见步骤 1）。
+源码公开在 GitHub：<https://github.com/YuumaKobayashi/dsh-trading-mode>，每个版本对应一个 git tag（当前 `v0.8.1`）。安装来源有四种：Release 产物的 `.tgz` 网址、Git 仓库地址、本地目录，以及 npm registry 上的包名（同一份 0.8.1 已发布，见步骤 1 的 D）。注意 `npm install dsh-trading-mode` 只是把包下载进一个 Node 项目，**不会**让 DSH 加载它。
 
 先确认四件事：
 
@@ -54,11 +54,25 @@ C. **本地目录（离线 / 开发用）**
 <你的插件目录>\dsh-trading-mode        // 绝对路径
 ```
 
-不要执行 `npm install dsh-trading-mode`、`npx dsh …` 或 `dsh plugin install …` —— 这三条命令都不存在，本仓库也没有任何已发布的包名可以这样装；`npm install <tgz 网址>` 只会把包装进普通 Node 项目的 `node_modules`，**不会**让 DSH 加载它（`npm install` 只装开发依赖，见「开发与文档索引」，它**不是**安装插件的方式）。
+D. **npm registry 上的包名（装前会做版本兼容性预检）**
+
+```text
+dsh-trading-mode
+```
+
+需要 DSH 能访问 registry（默认 `https://registry.npmjs.org`）。在图形界面里于同一个输入框直接填包名；由助手代劳时显式给出 registry：
+
+```text
+plugin_manager({ action: "install_bundle", target: "dsh-trading-mode", registry: "https://registry.npmjs.org" })
+```
+
+这一种和 A/B/C 的区别：只有按包名安装时，DSH 会在**安装前**检查版本兼容性；A/B/C 的检查发生在安装完成之后（见步骤 3）。
+
+不要执行 `npx dsh …` 或 `dsh plugin install …` 来装 —— 这两条命令不存在。`npm install dsh-trading-mode` 是能下载到包（registry 上确实有），但它只会把包装进普通 Node 项目的 `node_modules`，**不会**让 DSH 加载；`npm install <tgz 网址>` 同理（`npm install` 只装开发依赖，见「开发与文档索引」，它**不是**安装插件的方式）。
 
 **步骤 2 — 在 DSH 里安装。**
 
-图形界面：**设置 → 插件 → 添加插件 → 安装第三方插件**，在 **Package name or address** 输入框里粘贴步骤 1 的一种地址，点 **Install plugin**。
+图形界面：**设置 → 插件 → 添加插件 → 安装第三方插件**，在 **Package name or address** 输入框里粘贴步骤 1 的地址或包名，点 **Install plugin**。
 
 由助手代劳时（`target` 换成你要用的地址）：
 
@@ -69,7 +83,7 @@ plugin_manager({ action: "install_bundle", target: "https://github.com/YuumaKoba
 - 插件管理属于**受审批操作**：DSH 会先向你请求许可，批准后才执行。
 - 安装动作由 **DSH 自己**完成：它会写当前 profile 的 `package.json` 与 `cordis.patch.yml`（本 bundle 的 patch 入口是包内的 `cordis.patch.yml`）。**不要手改 profile** —— 不要往 `cordis.yml`、profile 的 `package.json` 或 `dsh.profile.bundles` 里手动加行；手动写出来的半装状态正是「装错 profile / Loader 里没有这一行」的主要来源。
 - 宿主侧代码只在 DSH 进程启动时加载：装完**重启一次 DSH**；客户端 bundle 按请求提供，浏览器刷新即可。
-- 用 A / B 装时，版本兼容性检查发生在**安装完成之后**（只有按包名从 registry 装才能安装前预检），所以装完请照步骤 3 确认。
+- 用 A / B / C 装时，版本兼容性检查发生在**安装完成之后**（只有 D 那种按包名从 registry 装才能安装前预检），所以装完请照步骤 3 确认。
 
 **步骤 3 — 确认已加载。**
 
