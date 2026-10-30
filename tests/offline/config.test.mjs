@@ -12,7 +12,10 @@ import assert from 'node:assert/strict';
 import {
   AI_CONFIG,
   API_POLICY,
+  CACHE_KEYS,
+  CRYPTO_QUOTE,
   CRYPTO_RANGE_DAYS,
+  CRYPTO_SPOTLIGHT,
   HTTP_POLICY,
   IDENTITY_POLICY,
   MARKETS,
@@ -117,6 +120,22 @@ await suite.check('networkMode accepts exactly auto | standard | compatibility',
   return 'auto/standard/compatibility';
 });
 
+await suite.check('a reload without the setting clears the previous override (0.8.2 regression)', () => {
+  // `applyUserConfig` used to call these setters only when the new config
+  // *declared* the key, so deleting a line from cordis.patch.yml left the
+  // previous load's mode/safety exception in force for the rest of the process.
+  setNetworkMode('compatibility');
+  setAllowUnfencedLoopback(true);
+  assert.equal(networkMode(), 'compatibility');
+  assert.equal(allowUnfencedLoopback(), true);
+  // What a second load with an empty config now does — unconditionally:
+  setNetworkMode(undefined);
+  setAllowUnfencedLoopback(undefined);
+  assert.equal(networkMode(), 'auto', 'removing networkMode must restore the shipped default');
+  assert.equal(allowUnfencedLoopback(), false, 'removing the security exception must restore fail-closed');
+  return 'networkMode=auto, allowUnfencedLoopback=false after reload';
+});
+
 await suite.check('crypto ranges are sized in calendar days, stock ranges in trading days', () => {
   assert.equal(rangeDays('1mo', 'CRYPTO'), 30);
   assert.equal(rangeDays('1mo', 'US'), CRYPTO_RANGE_DAYS['1mo'] > 0 ? rangeDays('1mo', 'US') : null);
@@ -124,6 +143,31 @@ await suite.check('crypto ranges are sized in calendar days, stock ranges in tra
   assert.ok(candleLimit('1d', '5m', 'US') > 0);
   assert.ok(minBars('1y', '1d', 'US') > 0);
   return `6mo/1d crypto=${candleLimit('6mo', '1d', 'CRYPTO')} us=${candleLimit('6mo', '1d', 'US')}`;
+});
+
+await suite.check('a quote cache key carries the market, so a coin and a same-ticker stock never share one', () => {
+  // m00453 regression: `BTC` is also a NYSE-listed trust and `SUI` a US REIT.
+  // A symbol-only key served the US print to a crypto request for the whole TTL.
+  assert.equal(CACHE_KEYS.quote('BTC', 'CRYPTO'), 'quote:CRYPTO:BTC');
+  assert.equal(CACHE_KEYS.quote('BTC', 'US'), 'quote:US:BTC');
+  assert.notEqual(CACHE_KEYS.quote('BTC', 'CRYPTO'), CACHE_KEYS.quote('BTC', 'US'));
+  assert.equal(CACHE_KEYS.candles('BTC', '1d', '1mo', 'CRYPTO'), 'candles:CRYPTO:BTC:1d:1mo');
+  assert.equal(CACHE_KEYS.profile('BTC', 'CRYPTO'), 'profile:CRYPTO:BTC');
+  assert.equal(CACHE_KEYS.quote('AAPL'), 'quote:AAPL', 'an unhinted caller keeps the old key shape');
+  return 'quote/candles/profile are per market';
+});
+
+await suite.check('the crypto strip lists a broad coin set in USDT, without duplicates', () => {
+  assert.ok(CRYPTO_SPOTLIGHT.length >= 20, `the strip should show at least 20 coins, got ${CRYPTO_SPOTLIGHT.length}`);
+  assert.equal(new Set(CRYPTO_SPOTLIGHT).size, CRYPTO_SPOTLIGHT.length, 'no coin is listed twice');
+  for (const symbol of CRYPTO_SPOTLIGHT) {
+    assert.match(symbol, /^[A-Z0-9]{2,15}$/, `${symbol} must be a bare USDT-quotable base`);
+  }
+  for (const required of ['BTC', 'ETH', 'SOL', 'SUI']) {
+    assert.ok(CRYPTO_SPOTLIGHT.includes(required), `the strip must include ${required}`);
+  }
+  assert.equal(CRYPTO_QUOTE, 'USDT');
+  return `${CRYPTO_SPOTLIGHT.length} coins in ${CRYPTO_QUOTE}`;
 });
 
 await suite.check('the retry/timeout policy stays conservative', () => {

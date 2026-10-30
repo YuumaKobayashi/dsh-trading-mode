@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Trading Mode">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101a2b"/>
+      <stop offset="1" stop-color="#1d3a5f"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="64" height="64" rx="14" fill="url(#bg)"/>
+  <g stroke-linecap="round">
+    <line x1="17" y1="20" x2="17" y2="44" stroke="#7cc4ff" stroke-width="2.5"/>
+    <rect x="13" y="26" width="8" height="12" rx="1.5" fill="#4da3ff"/>
+    <line x1="30" y1="16" x2="30" y2="38" stroke="#ffd166" stroke-width="2.5"/>
+    <rect x="26" y="21" width="8" height="10" rx="1.5" fill="#ffc233"/>
+    <line x1="43" y1="26" x2="43" y2="50" stroke="#6ee7b7" stroke-width="2.5"/>
+    <rect x="39" y="31" width="8" height="13" rx="1.5" fill="#38d39f"/>
+    <path d="M14 42 L27 34 L36 37 L50 24" fill="none" stroke="#f4f7ff" stroke-width="2.5" stroke-linejoin="round" opacity="0.9"/>
+  </g>
+</svg>

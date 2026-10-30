@@ -1,267 +1,297 @@
 # dsh-trading-mode
 
-**本地运行、由 DSH（DeepSeek Harness）宿主承载的行情研究面板**：覆盖美股（US）、港股（HK）、A 股（CN）、日股（JP）与加密货币（CRYPTO）**五个市场**，提供报价、K 线、技术指标与公司档案，外加一个跑在宿主 `llm` 服务上的 AI 分析。当前版本 **`0.8.1`，处于 Beta / 0.x 阶段** —— 版本号一律以 `package.json` 为准，运行时可用围栏无关的 `GET /api/trading/health` 读到。它**不下任何订单**，也不提供投资建议：所有内容仅供个人研究。
+一个运行在 [DSH（DeepSeek Harness）](https://github.com/YuumaKobayashi/dsh-trading-mode) 里的行情研究面板。
 
-## 使用限制
+支持美股、港股、A 股、日股和加密货币，可以查报价、看 K 线和技术指标、浏览标的资料，也可以调用 DSH 的 `llm` 服务生成一份基于当前数据快照的分析。
 
-- **不下单、不接券商**：插件没有任何能触达市场的写操作，也没有持仓、盈亏、组合与回测。
-- **不保证实时**：数据来自第三方公开网页接口，通常有延迟。每条行情都带时间戳与新鲜度：`Updated HH:MM:SS` + `Data may be delayed`，用过期缓存时标 `Last available data`。时效分级是 **`fresh`（≤5 分钟）/ `delayed`（≤30 分钟）/ `stale`（≤24 小时）/ `historical`（更旧）**；界面**从不**标注 Live / Real-time / Tick-level，也**不承诺** tick / Level-2 / 全市场覆盖。同一时刻只显示一种状态 —— `Updated` 与 `Last available data` 不会同时出现。
-- **不保证上游可用**：源站会限流、重置连接、改版，或对某些网络区域返回 403。可用时插件自动降级到备用源；不可用时给明确错误并标注降级，**不编造数据**。
-- **没有盘中基本面**：没有财报日历、公告流、新闻流，也没有盘中估值刷新。
-- **不承诺跨设备同步**：自选、语言与配色偏好只落在**本机**的那个 DSH profile 里（配色偏好由 DSH 自己的主题设置保存）；跨设备同步需要宿主存储后端自己提供，本插件不承诺。
-- **上游端点可能失效**：这些都是未鉴权的公开接口，随时可能改版或封锁，属已知风险而非缺陷。
-- **界面语言只有 `en` / `zh`**：`SUPPORTED_LANGS = ['en', 'zh']`（`lib/trading/config.js`），其它语言返回 `BAD_REQUEST`，不会被静默忽略。
-- **AI 不取价**：报价与成交量由上游取得、经插件校验与归一化后写进快照；技术指标（SMA / EMA / RSI / MACD / ATR / 枢轴等）由插件**本地计算**。两类数据都是组装成快照后交给模型的，模型不访问任何财经网站。
-- **日股（JP）不与 US / HK / CN 同级**：JP 的**历史 K 线、技术指标与全量清单都记 `不保证`**（没有可达的历史 K 线源；清单只有东财一个源）。不要把 JP 与其它市场读成同一档能力，逐格依据见下方「功能范围」。
-- **指数点位不是可交易价格**；加密货币一律以 USDT 现货计价。
-- **宿主请求围栏缺失时默认拒绝服务**：插件 fail closed —— 宿主没提供可用的请求围栏时，除 `GET /api/trading/health` 外的所有路由返回 **503 `HOST_SECURITY_UNAVAILABLE`**。唯一例外是你**显式**在插件配置里写下的 `security.allowUnfencedLoopback: true`：它只对回环来源生效、每次使用都打一条 error 级 `SECURITY` 日志、远端来源照旧拒绝，默认关闭 —— 换句话说，没有任何「开发模式」会自动放行请求。
-- **没有可靠身份时不写用户数据**：拿不到可信的每用户身份时，读行情照常，但自选 / 偏好的**写**路径返回 **503 `NO_IDENTITY`**，不会把所有浏览器混进同一个存储桶。
+当前版本为 **0.8.2（Beta）**。实际版本以 `package.json` 为准，也可以通过 `GET /api/trading/health` 查看。
 
-## 安装三步
+> 这是研究工具，不是交易客户端。插件不接券商、不下单，也不提供投资建议。行情可能延迟，使用前请留意数据时间。
 
-安装入口是一次 **DSH 内部操作**：图形界面里是 **设置 → 插件 → 添加插件**；由助手代劳时就是 `plugin_manager({ action: "install_bundle", target: "<地址>" })`。它**不是**终端命令。
+## 安装
 
-源码公开在 GitHub：<https://github.com/YuumaKobayashi/dsh-trading-mode>，每个版本对应一个 git tag（当前 `v0.8.1`）。安装来源有四种：Release 产物的 `.tgz` 网址、Git 仓库地址、本地目录，以及 npm registry 上的包名（同一份 0.8.1 已发布，见步骤 1 的 D）。注意 `npm install dsh-trading-mode` 只是把包下载进一个 Node 项目，**不会**让 DSH 加载它。
+插件必须由 DSH 加载，不能单独启动。需要 Node.js 20 或更高版本；目前实际测试的版本是 Node.js 24.15.0，宿主是 DSH `0.2.0-rc.2` 和 `0.2.1-rc.2`。其他环境见[兼容性](#兼容性)。
 
-先确认四件事：
+安装前先确认 DSH 正在使用哪个 profile。插件只会装进当前运行的 profile；如果装完找不到按钮，这是最值得先检查的一项。
 
-- **运行环境**：这是一个 DSH **bundle**，必须由宿主加载、**不能独立运行**；`package.json` 声明 `engines.node >= 20`（Node 20 或更高），而实测过的是 Node `v24.15.0` + DSH `0.2.0-rc.2` 与 `0.2.1-rc.2`（完整矩阵见「兼容性」）。
-- **当前运行的是哪个 profile**：DSH 可以有多个 profile，插件管理器只作用于**当前运行的那个**。装错 profile 的典型症状是「Loader 里没有这一行、页面上也没有按钮」，而日志里往往什么也看不到。
-- **地址的写法**：本地目录必须是**绝对路径**（`~` 不会展开）；网址形式（A / B）不需要路径。
-- **装完怎么验证**：见步骤 3（顶栏按钮 + `GET /api/trading/health`）；有本地副本时还可跑两个只读检查 —— `npm run inspect:profile`（哪些 profile 加载了这份代码）与 `npm run verify:install`（逐字节比对 profile 里的副本，等价于 `npm test` 之外的另一道 verify 门禁）。
+### 1. 选择安装来源
 
-**步骤 1 — 选一种安装来源。**
+在 DSH 的 **设置 → 插件 → 添加插件 → 安装第三方插件** 中，可以填以下任意一种来源。
 
-A. **Release 里的 `.tgz`（推荐：目标机器不需要 git）**
+| 来源 | 填入内容 | 适合场景 |
+| --- | --- | --- |
+| Release 包（推荐） | `https://github.com/YuumaKobayashi/dsh-trading-mode/releases/download/v0.8.2/dsh-trading-mode-0.8.2.tgz` | 普通安装，无需 git |
+| Git 仓库 | `github:YuumaKobayashi/dsh-trading-mode#v0.8.2` | 已安装 git 的机器 |
+| npm registry | `dsh-trading-mode` | 可访问 npm registry 的环境 |
+| 本地目录 | 插件源码所在的**绝对路径** | 离线安装、开发调试 |
 
-```text
-https://github.com/YuumaKobayashi/dsh-trading-mode/releases/download/v0.8.1/dsh-trading-mode-0.8.1.tgz
-```
+Git 地址也可以写成 `https://github.com/YuumaKobayashi/dsh-trading-mode#v0.8.2`。建议固定 tag；不指定时会安装 `main` 的最新提交。本地路径中的 `~` 不会自动展开。
 
-就是 `npm pack` 的产物（74 个文件、纯 JS、没有构建步骤）；目标机器只要能访问 github.com 即可。
+npm 包名安装会在安装前做版本兼容性预检；Release、Git、本地目录这三种方式的检查发生在安装后。
 
-B. **Git 仓库地址（目标机器需要装有 git）**
+注意：`npm install dsh-trading-mode` 只会把包装进普通 Node.js 项目，**不会把插件安装到 DSH**。也不要使用 `npx dsh …` 或 `dsh plugin install …`，这两种命令不是当前的安装入口。
+
+### 2. 在 DSH 中安装
+
+将地址或包名粘贴到 **Package name or address**，点击 **Install plugin**，按提示批准安装。
+
+如果通过 DSH 助手执行插件管理操作，可以使用：
 
 ```text
-github:YuumaKobayashi/dsh-trading-mode#v0.8.1
+plugin_manager({ action: "install_bundle", target: "https://github.com/YuumaKobayashi/dsh-trading-mode/releases/download/v0.8.2/dsh-trading-mode-0.8.2.tgz" })
 ```
 
-也可以写成 `https://github.com/YuumaKobayashi/dsh-trading-mode#v0.8.1`。`#` 后面是 tag 或分支：写 tag 才是可复现的版本，不写会装 `main` 的最新提交。
-
-C. **本地目录（离线 / 开发用）**
-
-```text
-<你的插件目录>\dsh-trading-mode        // 绝对路径
-```
-
-D. **npm registry 上的包名（装前会做版本兼容性预检）**
-
-```text
-dsh-trading-mode
-```
-
-需要 DSH 能访问 registry（默认 `https://registry.npmjs.org`）。在图形界面里于同一个输入框直接填包名；由助手代劳时显式给出 registry：
+按 npm 包名安装时，使用：
 
 ```text
 plugin_manager({ action: "install_bundle", target: "dsh-trading-mode", registry: "https://registry.npmjs.org" })
 ```
 
-这一种和 A/B/C 的区别：只有按包名安装时，DSH 会在**安装前**检查版本兼容性；A/B/C 的检查发生在安装完成之后（见步骤 3）。
+`plugin_manager(...)` 是 DSH 内部操作，不是需要复制到终端执行的 shell 命令。安装过程中 DSH 会更新当前 profile 的配置；不需要手动修改 `cordis.yml`、profile 的 `package.json` 或 `dsh.profile.bundles`。
 
-不要执行 `npx dsh …` 或 `dsh plugin install …` 来装 —— 这两条命令不存在。`npm install dsh-trading-mode` 是能下载到包（registry 上确实有），但它只会把包装进普通 Node 项目的 `node_modules`，**不会**让 DSH 加载；`npm install <tgz 网址>` 同理（`npm install` 只装开发依赖，见「开发与文档索引」，它**不是**安装插件的方式）。
+安装完成后**重启 DSH**。宿主侧代码只在进程启动时加载；浏览器端刷新页面即可。
 
-**步骤 2 — 在 DSH 里安装。**
+### 3. 检查是否安装成功
 
-图形界面：**设置 → 插件 → 添加插件 → 安装第三方插件**，在 **Package name or address** 输入框里粘贴步骤 1 的地址或包名，点 **Install plugin**。
+1. `plugin_manager({ action: "list_bundles" })` 中能看到 `dsh-trading-mode`，Loader 中有 `include:trading-mode`。
+2. 刷新页面后，左侧栏（插件 / 插件市场 / 自动化任务 / 技能中心 那一列）能看到 **Trading Mode** 图标行；点击即可进入，不需要先打开会话。
+3. 查看 `GET /api/trading/health`。它会返回插件版本、API、请求围栏和身份状态。
 
-由助手代劳时（`target` 换成你要用的地址）：
+如果手边有源码副本，还可以运行：
 
-```text
-plugin_manager({ action: "install_bundle", target: "https://github.com/YuumaKobayashi/dsh-trading-mode/releases/download/v0.8.1/dsh-trading-mode-0.8.1.tgz" })
+```bash
+npm run inspect:profile
+npm run verify:install
 ```
 
-- 插件管理属于**受审批操作**：DSH 会先向你请求许可，批准后才执行。
-- 安装动作由 **DSH 自己**完成：它会写当前 profile 的 `package.json` 与 `cordis.patch.yml`（本 bundle 的 patch 入口是包内的 `cordis.patch.yml`）。**不要手改 profile** —— 不要往 `cordis.yml`、profile 的 `package.json` 或 `dsh.profile.bundles` 里手动加行；手动写出来的半装状态正是「装错 profile / Loader 里没有这一行」的主要来源。
-- 宿主侧代码只在 DSH 进程启动时加载：装完**重启一次 DSH**；客户端 bundle 按请求提供，浏览器刷新即可。
-- 用 A / B / C 装时，版本兼容性检查发生在**安装完成之后**（只有 D 那种按包名从 registry 装才能安装前预检），所以装完请照步骤 3 确认。
+前者只读检查哪些 profile 安装了插件，后者检查已安装副本和当前源码是否一致。详细说明在 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
-**步骤 3 — 确认已加载。**
+### 升级、禁用和卸载
 
-- `plugin_manager({ action: "list_bundles" })` 里出现 `dsh-trading-mode`；profile 的 `dsh.profile.bundles` 里出现该条目，Loader 里出现 `include:trading-mode`。
-- 打开任意会话后，标题栏出现 **Trading Mode** 按钮。它挂在 `conversation.session.header.actions` 这个 session 级 list slot 上，空状态不渲染，所以「没有会话时看不到按钮」是正常的。
-- 只读复核：`npm run inspect:profile`；更严格的一致性检查见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) 的 `npm run verify:install`。
-
-### 升级 / 禁用 / 卸载
-
-- **升级**：用新版本的地址再装一次（`#v0.8.2` 或新版 `.tgz` 网址；本地目录则指向新副本），然后重启 DSH。自选、偏好与缓存都在 bundle **之外**，升级不会丢。
-- **禁用（不删除）**：`plugin_manager({ action: "set_bundle", target: "dsh-trading-mode", enabled: false })`。
-- **卸载**：`plugin_manager({ action: "remove_bundle", target: "dsh-trading-mode" })`，然后重启 DSH。
-- **卸载不删数据**：自选 / 偏好 / 行情缓存 / 目录快照都在 bundle **之外**的 `<DSH_HOME>/trading-mode/`（`<DSH_HOME>` = `$DSH_HOME`，否则 `$DSH_DIR`，否则 `~/.dsh`；路径解析见 `lib/index.js` 的 `resolveHomeDir()`）。`remove_bundle` 只移除插件，**不会**删除这些文件；要彻底清理需要你手动删该目录，或按 [docs/PRIVACY.md](docs/PRIVACY.md) 的流程处理。
-- **备份 / 迁移**：备份 = 复制 `<DSH_HOME>/trading-mode/`；数据按 DSH user id 隔离，只属于**那一个 profile**，换 profile 或换机器不会自动带走，也不承诺跨设备同步。
-
-### 只读自检工具（`package.json` 里的两个脚本）
-
-这两个脚本只读 / 只在临时目录工作，不改动任何 profile，也不安装任何东西：
+升级时改用新版本的 tag 或 `.tgz` 地址重新安装，再重启 DSH。自选、偏好和缓存放在 bundle 外，不会因为替换 bundle 而删除。
 
 ```text
-npm run inspect:profile   # scripts/inspect-profile.mjs：只读，报告哪个 profile 装了这个插件、版本是多少、是 junction 还是 copy
-npm run smoke:artifact    # scripts/smoke-artifact.mjs：打包产物并审计文件白名单与机器路径，打印 sha256 与体积
+plugin_manager({ action: "set_bundle", target: "dsh-trading-mode", enabled: false })
+plugin_manager({ action: "remove_bundle", target: "dsh-trading-mode" })
 ```
 
-### 安全围栏（fail closed）
+第一行用于禁用，第二行用于卸载。卸载后也需要重启 DSH。
 
-- 每个 `/api/trading/*` 请求都先过**宿主自己的**围栏 `connection.requestRejection(req)`（与 DSH API 网关同一道判据）；插件不自行解析 `Origin` / `Host`，没有 IP 白名单，也没有第二套鉴权。
-- 围栏**缺失或抛错**时，**除 `GET /api/trading/health` 外的所有路由返回 503 `HOST_SECURITY_UNAVAILABLE`**。`health` 是唯一豁免：它围栏无关、不带用户数据、不读配置、不打上游，只回答 `{plugin, version, api, fence, identity, note}`（`lib/trading/api.js`）。
-- 唯一例外是显式的 `security.allowUnfencedLoopback` 开关（默认 **`false`**，**只对回环地址生效**，首次放行时以 `SECURITY` 级别打醒目告警）。它是需要刻意打开的本机调试例外，**不是 “开发模式”**，不会被任何其它配置、环境变量或缺失的服务自动打开。
-- 反向代理若把 `/api/trading` 暴露给未认证来源，同源强度就等于不存在；代理必须原样转发 `Host` / `Origin` 与浏览器会话。
+**卸载不会清除本地数据。** 数据默认放在 `<DSH_HOME>/trading-mode/`，其中 `DSH_HOME` 的解析顺序是 `$DSH_HOME`、`$DSH_DIR`、`~/.dsh`（见 `lib/index.js` 的 `resolveHomeDir()`）。需要彻底清理时，请自行删除该目录，或按照 [隐私文档](docs/PRIVACY.md) 处理。备份和迁移也可以复制这个目录，但数据仍与对应 DSH profile 和用户身份有关，不会自动跨设备同步。
 
-## 首次使用
+## 开始使用
 
-- 打开任意会话 → 标题栏 **Trading Mode** → 面板首屏一次往返（`GET /api/trading` 等价 `/api/trading/bootstrap`）：自选表 + 每行报价 + 推荐池 + 状态 + AI 状态 + 偏好。取价失败的行 `quote:null` 并带错误码，不影响首屏。
-- 界面语言只有 `en` / `zh`；其它语言返回 400 `BAD_REQUEST`。
-- **配色可切换（0.8.1）**：面板头部的「深色 / 浅色」把窗口在**黑底白字**与**白底黑字**之间切换。所有面板表面都用自己的**不透明**调色板上色，因此窗口永远不会透出背后的对话；宿主提供 `theme` 服务时这个选择会写进 **DSH 自己的主题偏好**并随宿主设置持久化，宿主没有该服务时仅在本会话内生效（面板照常可切换）。
-- **身份决定能不能写用户数据**。解析顺序（`lib/index.js` 的 `resolveIdentity()` + `lib/trading/config.js` 的 `IDENTITY_POLICY`）：① 宿主模块 `@deepseek-ai/dsh-anonymous-user-id`（可用时就是它）；② 操作者显式声明的 `identity.localBucket`（等于声明「这个部署是单用户」，需要你自己承担该前提）；③ 没有身份。第 ③ 种情况下**读行情照常可用**，但自选与偏好的**写**路径、以及按用户计量的路径返回 **503 `NO_IDENTITY`**，不会把所有人混进同一个桶。当前身份来源可在 `GET /api/trading/status` 的 `identity` 字段与启动日志行里看到。
-- **自检入口**：`GET /api/trading/health`（围栏无关，只有版本与围栏 / 身份状态）；完整状态 `GET /api/trading/status`（provider 逐能力健康度、`ai.reason`、配额余量；诊断字段已脱敏，可整段贴进 issue，见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)）。
-- **时效标注**：每条报价带 `Updated HH:MM:SS` 与 `Data may be delayed`，使用过期缓存时标 `Last available data`；AI 分析按 `meta.dataQuality.grade`（`fresh` / `delayed` / `stale` / `historical`）在卡片上显示时效提示条，非 `fresh` 时禁止把数据表述为 now / today / live。界面**从不说**实时。
-- **「核心插件可用」与「AI 已配置」是两件事**：装上插件、宿主围栏可用就能读行情；AI 分析需要宿主 `llm` 服务与一个可用的模型路由，否则回答 `AI_UNAVAILABLE`，具体原因在 `ai.reason`。**可选配置（含 AI 路由说明）见下方「功能范围」**；provider / 路由内部结构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)。
-- **启动日志行**（`lib/index.js`）一次回答三件事 —— 数据后端、AI、身份与围栏：
+在左侧栏点击 **Trading Mode** 进入，这是唯一入口（不需要先打开会话，会话标题栏也不再放按钮）。首次打开时，面板会从 `GET /api/trading`（也就是 `/api/trading/bootstrap`）读取自选列表、报价、推荐池、状态和偏好。某条报价获取失败时，该行会返回 `quote: null` 和错误码，不会拖垮整个面板。
 
-  ```text
-  trading-mode: ready (… ; ai: available|unavailable — <reason>; identity: <source>…; request fence: host|unavailable — the API refuses with 503)
-  ```
+面板支持中文和英文（`zh` / `en`），其他语言参数会得到 `400 BAD_REQUEST`。可以在面板头部切换深色和浅色主题；如果宿主提供 `theme` 服务，选择会通过 DSH 的主题偏好保存，否则只在当前会话生效。
 
-## 兼容性
+行情不是实时推送。正常报价旁会显示 `Updated HH:MM:SS` 和 `Data may be delayed`；使用过期缓存时改为 `Last available data`，不会同时显示两种时间状态。具体时效分为：
 
-- **实测过的环境**：Windows 11 x64（`win32` x64，`Microsoft Windows NT 10.0.26300.0`）+ Node `v24.15.0`（npm 11.12.1）；DSH 桌面宿主 `0.2.0-rc.2`（内含 `@deepseek-ai/cordis@4.0.4`，2026-10-10）与 **`0.2.1-rc.2`（内含 `@deepseek-ai/cordis@4.0.5`，2026-10-18 升级复测）**，两者都满足 peer `^4.0.1`。两个宿主上离线套件都是 **`13 passed, 0 failed, 0 skipped`**（13 个套件、153 项检查，`npm run test:release` 输出 `release gate: PASS`），装机校验 `6/6 install checks passed`，AI 路由 `deepseek-official/deepseek-flash`；`0.2.1-rc.2` 上 `/api/trading/health` 回 `api:"ready"`、两处客户端 slot 均 `active:true`。
-- **`engines.node: ">=20"` 是声明，不是测试结论**：只跑过 Node **24.15.0**。Node 20 / 21 / 22 / 23 / 25、macOS、Linux、WSL / WSL2、Windows ARM64、DSH CLI、`0.2.0-rc.2` / `0.2.1-rc.2` 之外的其它 DSH 版本、公司网络 / 反向代理 / VPN 出口一律 `未验证`，**不作支持承诺**。完整矩阵与量法见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
-- **宿主要求**：必须同时提供宿主侧 `connection`（提供 `requestRejection(req)`）与 `webServer`（前缀路由注册），以及客户端 `ui-slots`（标题栏按钮与 `shell.overlay` 浮层）。`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-storage-domain`、`@deepseek-ai/dsh-anonymous-user-id` 都是**可选** peer，缺失只降级（AI 报 `AI_UNAVAILABLE` / 自选回落到本机 JSON 文件 / 无身份时写操作被拒），不会让插件加载失败。唯一非可选 peer 是 `@deepseek-ai/cordis`（`^4.0.1`）。
-- **运行时依赖为空**（`dependencies` 为空）；`react` / `react-dom` / `zod` 只在开发与测试时需要（`devDependencies`）。
+| 状态 | 数据年龄 |
+| --- | --- |
+| `fresh` | 不超过 5 分钟 |
+| `delayed` | 不超过 30 分钟 |
+| `stale` | 不超过 24 小时 |
+| `historical` | 超过 24 小时 |
 
-## 功能范围
+面板不标注 Live、Real-time 或 Tick-level，也不提供 Level-2 行情。指数点位不代表可交易价格；加密货币使用 USDT 现货报价。
 
-取值只有四种：`支持` = 有实测出数的路径且多半还有第二源兜底；`部分支持` = 只有一个上游，或只覆盖部分区间 / 板块 / 查询写法；`不保证` = 依赖单一上游且实测常不可达，可用性随网络变化；`不支持` = 没有实现。
+### AI 分析怎么工作
+
+报价和成交量来自第三方数据源，经过插件校验、归一化后放入快照；SMA、EMA、RSI、MACD、ATR、枢轴等指标由插件本地计算。AI 只接收整理好的快照，通过 DSH 的 `llm` 服务分析，**不会自己访问财经网站取价**。
+
+AI 是可选能力。即使宿主没配模型，行情面板仍可以使用；AI 区域会显示 `AI_UNAVAILABLE`，具体原因在 `GET /api/trading/status` 的 `ai.reason` 中。没有可用报价时，分析也会失败，不会生成一个看似完整但没有价格依据的结论。数据不够新时，AI 卡片会显示时效提示，并避免把旧数据描述成当前实时情况。
+
+## 各市场支持情况
+
+这里的“支持”表示已有实测可用的数据路径；“部分支持”通常表示覆盖不完整或缺少备用源；“不保证”表示当前上游在实测网络中经常不可达；“不支持”表示尚未实现。
 
 | 市场 | 报价 | K 线 | 技术指标 | 公司档案 | 全量清单 | 搜索 |
 | --- | --- | --- | --- | --- | --- | --- |
-| US | 支持 | 支持 | 支持 | 部分支持 | 支持 | 支持 |
-| HK | 支持 | 支持 | 支持 | 部分支持 | 支持 | 支持 |
-| CN | 支持 | 支持 | 支持 | 部分支持 | 支持 | 部分支持 |
-| JP | 支持 | 不保证 | 不保证 | 部分支持 | 不保证 | 部分支持 |
-| CRYPTO | 支持 | 支持 | 支持 | 支持 | 支持 | 支持 |
+| 美股 US | 支持 | 支持 | 支持 | 部分支持 | 支持 | 支持 |
+| 港股 HK | 支持 | 支持 | 支持 | 部分支持 | 支持 | 支持 |
+| A 股 CN | 支持 | 支持 | 支持 | 部分支持 | 支持 | 部分支持 |
+| 日股 JP | 支持 | 不保证 | 不保证 | 部分支持 | 不保证 | 部分支持 |
+| 加密货币 CRYPTO | 支持 | 支持 | 支持 | 支持 | 支持 | 支持 |
 
-逐格依据（`lib/trading/config.js` 的 `MARKET_DATA_CONFIG` / `UNIVERSE_PROVIDERS`）：
+**日股需要单独说明。** JP 报价可以通过东财和腾讯获取，但目前没有可靠的历史 K 线来源：腾讯东京接口通常只返回一根，东财 `push2his` 在实测环境中会重置连接。因此图表可能只显示少量数据并提示 `partial history`，MA200 等长周期指标也可能无法计算。日股完整标的清单只有东财一个来源，失效时会明确提示不可用。
 
-- **报价**：US / HK / CN / JP 走东财（主力）+ 腾讯（备用）；CRYPTO 走 Binance + Gate（USDT，7×24）。
-- **K 线 / 技术指标**：US = 东财日 / 周 + 新浪美股日线兜底（**美股分钟线仅东财**）；HK = 东财 + 腾讯 + stooq；CN = 东财 + 腾讯 + 新浪日线；CRYPTO = Binance / Gate 全历史分页。**JP 没有可达的历史 K 线源**（腾讯东京接口任何区间只回 1 根、东财 `push2his` 会 RST），图表只显示极少数根并标 `partial history`，MA200 一类指标也算不出 —— 所以 JP 的这两格是 `不保证`，**明显弱于 US / HK / CN**。
-- **公司档案**：US / HK / CN / JP 都依赖东财（Yahoo 在实测网络下 403）→ `部分支持`；CRYPTO 由 CoinLore 提供名称 / 中文名 / 市值 / 排名，未收录的小币种回落目录合成档案。
-- **全量清单**：源顺序 `UNIVERSE_PROVIDERS` —— US `eastmoney → nasdaq`、HK `eastmoney → sina`、CN `sina → eastmoney`、JP 仅 `eastmoney`、CRYPTO `coinlore → binance`。JP 清单源不可达时该板块报「清单源不可用」，而不是造行。
-- **搜索**：US / HK / CRYPTO 走东财 suggest 或 CoinLore 榜单；JP 上游只认**东京代码**与**中文名**，假名 / 罗马字靠本地目录补 → `部分支持`；CN 只有东财 suggest 一条路（外加中文名种子目录）且无第二源 → `部分支持`。证券类型见 `SEARCH_SECURITY_TYPES`，上限 `SEARCH_RESULT_LIMIT = 100`。
-- **可浏览板块**（`UNIVERSE_BOARDS`）：US 三个（NASDAQ / NYSE / AMEX）、HK 三个（主板 / GEM / 基金信托）、CN 五个（沪市主板 / 科创板 / 深市主板 / 创业板 / 北交所）、JP 一个（东证）、CRYPTO 一个（市值榜 `TOP`）。港股债券 / 权证 / 牛熊证被显式排除。
-- **AI 分析**：五个市场都走宿主 `llm` 服务；取不到报价即失败，不会拿陈旧价格糊过去。
-- **时效分级**：`fresh`（≤5 分钟）/ `delayed`（≤30 分钟）/ `stale`（≤24 小时）/ `historical`（更旧），阈值在 `lib/trading/config.js` 的 `AI_CONFIG`（`freshMaxAgeMs` / `staleWarnMs` / `staleHistoricalMs`）；非 `fresh` 时系统提示禁止把数据表述为 now / today / live。
-- **入站配额与并发闸**（`lib/trading/config.js` 的 `API_POLICY`，由 `lib/trading/limits.js` 执行；滑动 60 秒窗口）：**每身份 240 次/分钟、全局 1200 次/分钟**；昂贵端点 `analyze` 20/60、`brief` 6/30、`universeRefresh` 2/4（每身份 / 全局）；同时在飞的 AI 分析 ≤ **2**（全局 ≤ **4**）。超限返回 **HTTP 429 `RATE_LIMITED`** 与 `Retry-After` 头；被拒请求不消耗额度、也不会打到上游。
-- **长任务有预算且可取消**：全市场目录扫描受 `UNIVERSE_POLICY.budgetMs` = **15 分钟**墙钟预算约束，超预算即停止翻页并报 `complete: false` + `reason: "budget"`；`DELETE /api/trading/universe` 可取消正在进行的扫描。
+各市场的数据链路如下：
 
-### 可选配置（不配也能用）
+| 能力 | 数据来源和限制 |
+| --- | --- |
+| 报价 | US / HK / CN / JP：东财优先，腾讯备用；CRYPTO：Binance、Gate，USDT 现货，7×24 小时 |
+| K 线 | US：东财日/周线，新浪日线备用（分钟线只有东财）；HK：东财、腾讯、Stooq；CN：东财、腾讯、新浪日线；CRYPTO：Binance、Gate 历史分页；JP：不保证 |
+| 公司档案 | US / HK / CN / JP 依赖东财；Yahoo 在实测网络下返回 403。CRYPTO 主要来自 CoinLore，部分小币种使用目录合成档案 |
+| 全量清单 | US：东财 → Nasdaq；HK：东财 → 新浪；CN：新浪 → 东财；JP：东财；CRYPTO：CoinLore → Binance |
+| 搜索 | US / HK / CRYPTO 支持上游搜索或榜单；CN 主要依赖东财 suggest 和本地中文种子目录；JP 主要识别东京代码、中文名，假名和罗马字依赖本地目录补充 |
 
-配置写在 profile patch 层的插件 entry 上（loader id 为 `trading-mode`）。**出厂默认已经可用**，核心插件装上即可读行情，以下键全部可选；不写任何配置就是默认值：
+可以浏览的板块包括：US 的 NASDAQ / NYSE / AMEX，HK 的主板 / GEM / 基金信托，CN 的沪市主板 / 科创板 / 深市主板 / 创业板 / 北交所，JP 的东证，以及 CRYPTO 市值榜 `TOP`。港股债券、权证和牛熊证不在清单中。搜索单次最多返回 100 条；类型配置见 `SEARCH_SECURITY_TYPES`。
+
+默认源顺序和各市场配置在 `lib/trading/config.js` 的 `MARKET_DATA_CONFIG`、`UNIVERSE_PROVIDERS`、`UNIVERSE_BOARDS` 中。更详细的接口和来源说明见 [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)。
+
+### 当前没有做的功能
+
+插件不支持下单、券商账户、持仓、盈亏、投资组合或回测；也没有财报日历、公告流、新闻流、盘中估值刷新、tick 行情或全市场实时覆盖。自选和偏好只在当前 DSH profile 的本地存储中保存，不承诺跨设备同步。
+
+## 配置
+
+默认配置即可使用行情功能。以下都是可选项，配置位置是 profile patch 中 loader id 为 `trading-mode` 的插件 entry。修改前建议先参考 [开发文档](docs/DEVELOPMENT.md)；不要为了安装插件手动编辑 profile 配置。
 
 ```yaml
 - id: trading-mode
   config:
-    networkMode: auto      # auto | standard | compatibility，默认 auto
-    providers:             # 逐市场覆盖数据源顺序（可选；下面是示例覆盖，不是出厂默认）
+    networkMode: auto  # auto | standard | compatibility
+    providers:         # 示例：覆盖默认数据源顺序
       US: ['yahoo', 'eastmoney', 'tencent', 'sina', 'stooq']
       CRYPTO: ['binance', 'gate', 'coinlore']
     identity:
-      localBucket: my-single-user-box   # 仅单用户部署：无宿主匿名 id 时用它落库（等于声明「单用户」）
+      localBucket: my-single-user-box  # 只适用于单用户部署
     security:
-      allowUnfencedLoopback: false      # 默认 false；唯一放行开关，只对回环来源生效，需自担风险
+      allowUnfencedLoopback: false    # 默认关闭
 ```
 
-- **`networkMode`**：`standard` 是朴素 `node:http(s)`（用运行时自己的 DNS 顺序，不钉地址族）；`compatibility` 记住上次应答的地址族并在每次重试时钉死 / 翻转；`auto` 从 `standard` 起步，**只把真正在传输层失败的 host** 提升到 `compatibility`。取其它值直接被拒绝：`networkMode must be one of auto, standard, compatibility (got "fast")`。
-- **`providers`**：市场 → provider id 的有序数组，覆盖 `MARKET_DATA_CONFIG` 的出厂链。合法 id 只有 `yahoo`、`eastmoney`、`tencent`、`stooq`、`sina`、`nasdaq`、`binance`、`gate`、`coinlore`。
-- **`identity.localBucket`**：只给**单用户**部署用。设置它就等于你声明「这个 DSH 只有一个用户」；多用户共享一个 DSH 时不要设。
-- **`security.allowUnfencedLoopback`**：**唯一的放行开关，默认 `false`，正常使用不要打开**。宿主没提供请求围栏时，设为 `true` 会让**回环来源**（`127.0.0.1` / `::1`）的请求绕过围栏、其它来源照旧 503；插件在启动与每次实际放行时都会写一条 error 级 `SECURITY` 日志，`GET /api/trading/health` 会显示 `api: "ready-on-loopback-only"` / `fence: "loopback-exception"`。取非布尔值会被拒绝：`security.allowUnfencedLoopback must be true or false (got …)`。
-- **非法值不会生效**：未知市场 / 未知 provider / 重复项 / 空数组 / 非数组都会被拒绝，出厂默认继续生效，并写一条日志 `trading-mode: invalid configuration — <problem> (the shipped default stays in force)`。
-- **AI 配置**：`AI_CONFIG` 的 `provider` / `model` 可用时优先，其次取 DSH 当前默认模型，再退到 `llm.listProviders()` 里第一个匹配 `/deepseek/i` 的模型；`maxTokens` 2400、`temperature` 0.2、超时 120 s。插件只调用宿主公开服务 `ctx.get('llm').stream({...})`，**不 import 任何宿主私有包，也不需要、不存储任何 API 凭据** —— 鉴权与计费都在宿主侧。provider / 路由内部结构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，逐源清单见 [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md)，出错怎么办见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
+`networkMode` 默认是 `auto`：平时使用 Node.js 标准 HTTP(S) 网络行为，只有某个 host 真正发生传输层失败时才切到兼容模式。`standard` 始终使用默认 DNS/连接策略；`compatibility` 会记录上次可用的地址族，并在重试时尝试固定或翻转。非法值会报配置错误。
 
-## 故障处理
+`providers` 可以为每个市场指定有序的数据源列表。可用 id：`yahoo`、`eastmoney`、`tencent`、`stooq`、`sina`、`nasdaq`、`binance`、`gate`、`coinlore`。未知市场、未知 provider、重复项、空数组或非数组都不会覆盖默认配置，日志会说明原因。
 
-先拿 `GET /api/trading/status`：它已经脱敏，可以直接贴进 issue；围栏与身份状态也可以只看 `GET /api/trading/health`。
+`identity.localBucket` 只能用于你明确知道 **DSH 部署只有一个用户** 的场景。共享部署不要设置，否则不同用户会进入同一个存储桶。
 
-**Q1：装完了，页面却什么都没有？**
-最常见的原因是**装进了另一个 profile**。用 `npm run inspect:profile` 看哪个 profile 里有这个插件、版本是多少、是 junction 还是 copy；再用 `plugin_manager({ action: "list_bundles" })` 复核，并确认 Loader 里有 `include:trading-mode`。
+`security.allowUnfencedLoopback` 是缺少宿主请求围栏时的本机调试例外，默认 `false`。仅在显式设置为 `true` 后允许回环来源（`127.0.0.1` / `::1`）绕过围栏；远端请求仍被拒绝。启动及每次实际放行都会写 error 级 `SECURITY` 日志。正常使用不建议开启。
 
-**Q2：所有接口都回 503 `HOST_SECURITY_UNAVAILABLE`？**
-说明宿主没有提供可用的请求围栏（`connection.requestRejection` 不存在或调用抛错）。这是**设计上的 fail closed**：除 `GET /api/trading/health` 外一律拒绝，而不是放行未认证来源。此时不要把端口暴露到本机以外；只有在确认端口不可从外部到达时，才考虑那个显式的本机调试例外 `security.allowUnfencedLoopback`（默认关闭，只对回环生效）。启动日志里对应 `request fence: unavailable — the API refuses with 503` 与一条 `SECURITY` 告警。
+AI 模型路由优先使用 `AI_CONFIG` 中可用的 `provider` / `model`，然后尝试 DSH 当前默认模型，最后寻找 `llm.listProviders()` 中第一个匹配 `/deepseek/i` 的模型。默认 `maxTokens` 为 2400、`temperature` 为 0.2、超时 120 秒。插件只调用宿主的 `ctx.get('llm').stream({...})`，不保存 API Key；鉴权和计费由 DSH 处理。
 
-**Q3：自选 / 设置报 503 `NO_IDENTITY`？**
-说明这台部署拿不到可信身份：既没有宿主 `@deepseek-ai/dsh-anonymous-user-id`，也没有声明 `identity.localBucket`。读行情不受影响。二选一：让宿主提供匿名用户 id 模块，或在**确认是单用户部署**时声明 `identity.localBucket`。插件不会退回到「所有人共用一个桶」。
+## 安全、存储和请求限制
 
-**Q4：上游返回 403，或者报 `UPSTREAM_BLOCKED`？**
-说明这个源对你的网络不友好（Yahoo / Stooq 对未鉴权请求返回 403 很常见）。插件会按健康度自动换到链上的下一个源；全部失败时给出 `DATA_UNAVAILABLE` / `UPSTREAM_BLOCKED`，而**不会编造数据**。换一条网络或调整 `providers` 顺序通常能改善。
+### 请求围栏
 
-**Q5：429 是什么？`Retry-After` 怎么用？**
-429 表示超过**入站**配额（默认每身份 240 次/分钟，全局 1200，昂贵端点另有专项额度），不是上游限流。响应头 `Retry-After` 给出建议等待秒数；被拒的请求不消耗额度，等一会儿重试即可，不需要改配置。
+插件依赖 DSH 的 `connection.requestRejection(req)` 检查 `/api/trading/*` 请求，与宿主 API 网关使用同一套判断，不另行实现 Origin/Host 检查或 IP 白名单。
 
-**Q6：数据是实时的吗？**
-不是。每条行情都带数据时间戳与新鲜度标识：`Updated HH:MM:SS` + `Data may be delayed`，使用过期缓存时显示 `Last available data`；分级为 `fresh` / `delayed` / `stale` / `historical`。界面**从不**标注 Live / Real-time / Tick-level。
+如果围栏缺失或调用失败，除 `GET /api/trading/health` 外的路由都返回 **503 `HOST_SECURITY_UNAVAILABLE`**。这是有意设计的默认拒绝行为。`health` 是唯一例外：不读取用户配置、不访问上游、不返回用户数据，只返回 `{plugin, version, api, fence, identity, note}`。
 
-**Q7：AI 面板显示 `AI_UNAVAILABLE`？**
-`GET /api/trading/status` 的 `ai.reason` 会直接说明原因：没拿到 `llm` 服务 / 服务未注册（dsh-llm 插件没加载）/ 服务没有 `stream()` / 没有可用的 DeepSeek 模型路由。插件本身不需要密钥，AI 是否可用取决于宿主。
+如果使用反向代理，请确保它正确转发 `Host`、`Origin` 和浏览器会话，也不要将 `/api/trading` 暴露给未认证来源。
 
-**Q8：图表上方出现「历史数据不完整」横幅，指标也变少了？**
-说明该标的的 K 线根数不够（JP 最常见）。指标按样本量分级：`full` ≥200 根、`partial` ≥50、`limited` ≥20、`insufficient` <20；算不出的指标会列进 `unavailable`，而不是静默变成 0 或空值。
+### 用户身份与本地数据
 
-**Q9：公司网络 / 带证书检查的代理下取不到数据？**
-先分清两类故障，它们不是一回事：
+插件按以下顺序确定身份：
 
-- **TLS 信任失败**（证书链问题）：报错形如 `SELF_SIGNED_CERT_IN_CHAIN`、`UNABLE_TO_VERIFY_LEAF_SIGNATURE`、`CERT_HAS_EXPIRED`。修法是**让 Node 信任企业根证书**：把根证书 PEM 交给启动 DSH 的那个进程（例如 `NODE_EXTRA_CA_CERTS` 指向 PEM 文件），或在宿主侧配置证书。这属于环境修复，不在插件内。
-- **DNS / socket 层失败**：报错形如 `EAI_AGAIN`、`ECONNRESET`、`ETIMEDOUT`、`socket hang up`。此时把 `networkMode` 设为 `compatibility`（或先设 `standard` 做对照，证明问题不是这套兼容逻辑造成的）；`auto` 只把真正在传输层失败的 host 升级为兼容模式，所以大多数环境保持默认即可。
+1. 宿主提供的 `@deepseek-ai/dsh-anonymous-user-id`。
+2. 操作者显式配置的 `identity.localBucket`（仅单用户部署）。
+3. 两者都没有时视为无身份。
 
-**绝不要用 `NODE_TLS_REJECT_UNAUTHORIZED=0`**（或任何等价的「关掉证书校验」开关）来绕过上面第一类问题：它把整条链路的证书校验关掉，制造的安全问题远大于它掩盖的报错，插件不支持也不推荐这种修法。
+没有可信身份仍可读取行情，但自选、偏好写入和按用户计量的路径会返回 **503 `NO_IDENTITY`**。插件不会默认为所有访问者共用同一份用户数据。当前身份来源可以在 `GET /api/trading/status` 或启动日志中查看。
 
-## 开发与文档索引
+可选的 `@deepseek-ai/dsh-storage-domain` 缺失时，本地存储会回落到 JSON 文件。卸载后存储文件仍保留在 `<DSH_HOME>/trading-mode/`。
 
-### 从源码开发与测试
+### 速率限制与长任务
 
-`npm install` 在这里的意义只有一个：装**开发与测试依赖**（`react`、`react-dom`、`zod`）。它**不是安装插件的方式**（安装见「安装三步」）。不装 devDependencies 时客户端套件会 SKIP（缺 `react`），`npm test` 仍容忍该 SKIP，但**发布门禁 `npm run test:release` 会因此判失败**。
+默认使用滑动 60 秒窗口：每身份 240 次请求/分钟、全局 1200 次/分钟。开销较大的接口有单独额度：
 
-仓库已提交 `package-lock.json`，复现安装请用 `npm ci`；由于 `@deepseek-ai/cordis` 与可选的 `dsh-*` peer 由 DSH 运行时提供、不是本包的运行时依赖，npm 的 peer 解析需要显式放行，否则它会尝试从 registry 另装一份：
+| 接口 | 每身份 / 全局额度 |
+| --- | --- |
+| `analyze` | 20 / 60 |
+| `brief` | 6 / 30 |
+| `universeRefresh` | 2 / 4 |
 
-```text
+同时运行的 AI 分析每身份最多 2 个、全局最多 4 个。超限返回 `429 RATE_LIMITED` 和 `Retry-After`，被拒请求不会再访问上游或消耗配额。规则见 `API_POLICY` 和 `lib/trading/limits.js`。
+
+全市场目录扫描最多运行 15 分钟。超过预算会停止翻页，返回 `complete: false`、`reason: "budget"`；也可以调用 `DELETE /api/trading/universe` 取消扫描。
+
+## 出问题时先看这里
+
+优先检查 `GET /api/trading/status`，其中包含各数据源的健康状态、AI 原因和配额余量；诊断字段已经脱敏，适合贴到 issue。只想看插件版本、围栏和身份状态，则用 `GET /api/trading/health`。
+
+| 现象 | 排查方向 |
+| --- | --- |
+| 左侧栏没有 Trading Mode 行 | 刷新页面；确认当前 profile、`list_bundles`、Loader 的 `include:trading-mode`，运行 `npm run inspect:profile`。宿主过旧、没有 `sidebar.panellist` slot 时该插件没有入口可用 |
+| 所有 API 返回 `503 HOST_SECURITY_UNAVAILABLE` | 宿主没有提供可用的 `connection.requestRejection`。不要直接对外暴露端口；优先修复宿主围栏 |
+| 自选或偏好写入返回 `503 NO_IDENTITY` | 检查匿名用户 ID 服务；确认单用户部署后才考虑 `identity.localBucket` |
+| 数据源返回 403 / `UPSTREAM_BLOCKED` | 上游可能屏蔽当前网络。插件会尝试备用源；可检查网络或调整 `providers` 顺序 |
+| 返回 `429 RATE_LIMITED` | 触发插件入站配额，按 `Retry-After` 头提示稍后再试 |
+| AI 显示 `AI_UNAVAILABLE` | 查看 `/api/trading/status` 中的 `ai.reason`，确认 DSH 已加载 `llm` 服务并有可用模型路由 |
+| 图表显示历史数据不完整 | K 线根数不够，JP 尤其常见。少于 200 根时部分指标不能计算，不会用 0 冒充结果 |
+
+历史数据的指标可用性分为 `full`（≥200 根）、`partial`（≥50）、`limited`（≥20）和 `insufficient`（<20）；无法计算的指标会进入 `unavailable`。
+
+公司网络和代理环境里的连接失败，先区分两种情况：
+
+- **证书问题**：如 `SELF_SIGNED_CERT_IN_CHAIN`、`UNABLE_TO_VERIFY_LEAF_SIGNATURE`、`CERT_HAS_EXPIRED`。应让启动 DSH 的 Node.js 进程信任企业根证书，例如配置 `NODE_EXTRA_CA_CERTS` 指向 PEM 文件。
+- **DNS / socket 问题**：如 `EAI_AGAIN`、`ECONNRESET`、`ETIMEDOUT`、`socket hang up`。可以对比 `networkMode: standard` 与 `compatibility`，通常先保持 `auto` 即可。
+
+不要用 `NODE_TLS_REJECT_UNAUTHORIZED=0` 绕过证书验证。这会关闭 TLS 证书校验，不是本插件支持的解决方式。
+
+完整的故障排查见 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
+
+## 兼容性
+
+目前实际验证的环境：
+
+| 项目 | 已测试版本 |
+| --- | --- |
+| 操作系统 | Windows 11 x64（`win32` x64，`Microsoft Windows NT 10.0.26300.0`） |
+| Node.js / npm | `24.15.0` / `11.12.1` |
+| DSH 桌面宿主 | `0.2.0-rc.2`（Cordis `4.0.4`）、`0.2.1-rc.2`（Cordis `4.0.5`） |
+| AI 路由 | `deepseek-official/deepseek-flash` |
+
+两个宿主版本的离线测试结果均为 **13 passed、0 failed、0 skipped**（153 项检查），`npm run test:release` 通过；安装检查为 `6/6 install checks passed`。在 `0.2.1-rc.2` 上，`/api/trading/health` 返回 `api: "ready"`，两个客户端 slot 均为 `active: true`。
+
+`package.json` 声明 `engines.node: ">=20"`，但这不代表所有 Node 20+ 环境都经过测试。Node 20–23、25，macOS、Linux、WSL、Windows ARM64、其他 DSH 版本和各类企业代理/VPN 网络均未验证，不作兼容性保证。详见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
+
+宿主需要 `connection`、`webServer` 和客户端 `ui-slots`。唯一非可选 peer 是 `@deepseek-ai/cordis`（`^4.0.1`）；`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-storage-domain` 和 `@deepseek-ai/dsh-anonymous-user-id` 都是可选 peer，缺失时对应功能会降级。运行时 `dependencies` 为空；`react`、`react-dom`、`zod` 只用于开发和测试。
+
+## 开发和测试
+
+从源码开发时，先安装依赖：
+
+```bash
 npm ci --legacy-peer-deps
 ```
 
-```text
-npm test                 # 离线套件：syntax / config / transport / limits / router / api / fence / identity / watchlist / ai / client / release-scripts / repo
-npm run test:release     # 发布门禁：任何失败或跳过都判失败
+仓库提交了 `package-lock.json`。这里使用 `--legacy-peer-deps` 是因为 Cordis 和部分 DSH peer 应由宿主提供，不需要 npm 在开发环境另装。`npm install` / `npm ci` **不是插件安装步骤**。
+
+常用命令：
+
+```bash
+npm test                 # 离线测试
+npm run test:release     # 发布门禁；不能失败，也不能跳过
 npm run test:offline     # 等价于 npm test
-npm run test:config      # 单跑某一套（test:transport / test:router / test:api / test:fence / test:identity / test:watchlist / test:ai / test:client / test:repo / test:limits）
-npm run test:network     # 在线探针：非阻断，上游不可达时记 DEGRADED
-npm run check            # 只跑语法检查
+npm run test:config      # 只跑配置测试；其他 test:* 脚本可单独运行
+npm run test:network     # 在线探针，不纳入发布门禁
+npm run check            # 语法检查
+npm run inspect:profile  # 只读查看 profile 安装情况
+npm run verify:install   # 检查当前 profile 的插件副本
+npm run smoke:artifact   # 打包审计、检查文件和机器路径
 ```
 
-- 套件退出码：**`0` PASS、`1` FAIL、`3` SKIP**（缺少可选前置条件，例如客户端套件找不到 react）。普通 `npm test` 容忍 SKIP；`npm run test:release` **不允许任何 SKIP**，会打印 `release gate: FAIL — a release must not contain failed or skipped checks`。
-- `npm run test:network` 依赖第三方站点，**不作为门禁**：源站可用时断言真实数据，不可用时断言「抛出带类型的 `TradingError`，而不是编造或挂起」，因此结果不会随上游抖动红绿翻转。
-- 从工作区源码运行（link 进 profile、重启时机、profile 位置）见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)；`npm run verify:install` 校验当前 profile 装的就是这份代码，`npm run inspect:profile` 是只读版（列出每个 profile 是否指向本 checkout、版本与 `lib/index.js` 的 sha256 是否一致，退出码 `0` 已安装 / `1` 未安装或不存在 / `2` 参数错误）。
+离线测试包括 syntax、config、transport、limits、router、api、fence、identity、watchlist、ai、client、release-scripts、repo，共 13 套。退出码为 `0`（PASS）、`1`（FAIL）、`3`（SKIP）。普通 `npm test` 容许因为缺少可选前置条件而跳过，`test:release` 不允许跳过。例如未安装 React 开发依赖时，客户端测试可能 SKIP，发布门禁会失败。
 
-### 打包
+在线探针依赖第三方网站，失败时会记录 DEGRADED，并检查插件能否正确返回有类型的 `TradingError`，不会把外部服务临时不可用当成发布阻断。
 
-```text
-npm pack --dry-run --json   # 只应包含 lib/、docs/、scripts/、tests/、cordis.patch.yml、若干 markdown 与 package.json
-npm run smoke:artifact      # 打包后审计文件白名单与机器路径，打印 sha256 与体积
+打包前可以运行：
+
+```bash
+npm pack --dry-run --json
+npm run smoke:artifact
 ```
 
-### 文档索引
+Release `.tgz` 是 `npm pack` 产物，当前版本包含 74 个文件、纯 JavaScript，无额外构建步骤。打包检查会审计文件白名单、机器本地路径并输出 SHA-256 和体积。源码联调、profile 链接和安装校验见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
-[架构](docs/ARCHITECTURE.md) · [开发](docs/DEVELOPMENT.md) · [排障](docs/TROUBLESHOOTING.md) · [数据源](docs/DATA_SOURCES.md) · [HTTP API](docs/API.md) · [兼容性](docs/COMPATIBILITY.md) · [隐私](docs/PRIVACY.md) · [数据合规](docs/DATA_COMPLIANCE.md) · [发布模板](docs/RELEASE_TEMPLATE.md) · [发布清单](docs/RELEASE_CHECKLIST.md) · [路线图](docs/ROADMAP.md) · [贡献](CONTRIBUTING.md) · [安全](SECURITY.md) · [变更记录](CHANGELOG.md) · [Round-3 审计](docs/AUDIT-ROUND3.md)
+## 文档
+
+- [架构](docs/ARCHITECTURE.md) · [HTTP API](docs/API.md) · [数据源](docs/DATA_SOURCES.md)
+- [开发](docs/DEVELOPMENT.md) · [排障](docs/TROUBLESHOOTING.md) · [兼容性](docs/COMPATIBILITY.md)
+- [隐私](docs/PRIVACY.md) · [数据合规](docs/DATA_COMPLIANCE.md) · [安全](SECURITY.md)
+- [路线图](docs/ROADMAP.md) · [变更记录](CHANGELOG.md) · [贡献指南](CONTRIBUTING.md)
+- [发布模板](docs/RELEASE_TEMPLATE.md) · [发布清单](docs/RELEASE_CHECKLIST.md) · [Round-3 审计](docs/AUDIT-ROUND3.md)
 
 ### 截图
 
-只收录**真实截图**，政策见 [docs/screenshots/README.md](docs/screenshots/README.md)。该目录当前**没有任何真实截图**，因此本 README 不嵌入图片，也不放占位图或示意图。
+目前仓库还没有可用的真实产品截图，因此 README 暂时不放图片或占位图。截图收录规则见 [docs/screenshots/README.md](docs/screenshots/README.md)。
 
-### 许可（License）与合规边界
+## License 与数据使用
 
-本项目源码为 **MIT**（见 [LICENSE](LICENSE) 与 `package.json` 的 `license` 字段），该许可**只覆盖本仓库的源码**：**不覆盖**上游行情数据，**不覆盖**各上游名称 / 商标，也**不覆盖**页面中嵌入的 TradingView 内容（iframe 由你的浏览器直接从 `s.tradingview.com` 加载，插件不代理、不改造、不剥离其品牌与署名）。逐源条款状态、复用范围与 MIT 的完整范围声明以 [docs/DATA_COMPLIANCE.md](docs/DATA_COMPLIANCE.md) 与 [docs/PRIVACY.md](docs/PRIVACY.md) 为准 —— 那两份文档里 9 家上游与 TradingView 的条款**逐条都带 `not verified` 标记**：本仓库没有读到可引用的条款文本，因此 README 不复述任何条款结论，也不暗示任何授权。公开网页接口只用于你本机安装里的个人研究：不绕过鉴权、不抓登录页、不重新分发数据。
+项目源码采用 [MIT License](LICENSE)，但 MIT 只覆盖本仓库的源码，不代表上游行情数据、商标或第三方嵌入内容也采用 MIT。
+
+TradingView 内容由浏览器直接通过 `s.tradingview.com` 加载，插件不代理或修改其内容，也不移除其品牌和署名。当前 [数据合规文档](docs/DATA_COMPLIANCE.md) 对九家上游和 TradingView 的条款均标记为 `not verified`，不据此宣称取得数据使用或再分发授权。
+
+本项目面向本地个人研究使用。不绕过上游鉴权、不抓取登录页，也不重新分发行情数据。使用前请自行确认适用的数据源条款。

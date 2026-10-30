@@ -141,13 +141,23 @@ The client is a **single client plugin** built from the same `package.json`
 it calls `window.__ModuleLoader__.load({ id, factory })`, takes React from the loader, and
 contains no top-level ESM `import`/`export`.
 
-It registers exactly two slots:
+It registers two slots:
 
-- `conversation.session.header.actions` (id `trading-mode`, order 30) — the "Trading Mode"
-  button in the session header;
-- `shell.overlay` (id `trading-mode-app`, order 500) — the full-frame panel overlay.
+- `sidebar.panellist` (id `trading-mode`, order 2) — the sidebar row, placed directly below the
+  shipped 插件市场 row (order 1) and above 自动化任务 (order 10), so it stays visible without
+  scrolling on short windows. The row component renders only the chart glyph; the label is a lazy
+  thunk that resolves "Trading Mode" in the panel's current language;
+- `main` (key `trading-mode`) — the full panel page. It is registered inside the same
+  `slots.inject('sidebar.panellist')` callback because the host dispatches the row id to the
+  matching main key.
 
-Inside the overlay: Home (search, watchlist, crypto spotlight, market overview, AI brief),
+The sidebar row is the only entry point: there is no session-header button (0.8.2 removed the one
+added earlier) and no `shell.overlay` registration any more. The app is a page, not a modal:
+`.tm-page` fills the host's main area (100% width and height, flex column), so it is reachable
+before any conversation exists. Leaving it means switching back to another host panel; there is no
+Escape handler and no close button.
+
+Inside the page: Home (search, watchlist, crypto spotlight, market overview, AI brief),
 Detail (quote, candles, market data, technical grid, AI analysis, source links), a status
 strip and two client-side preference switches — EN/中文 and Dark/Light (0.8.1). The browser only
 ever talks to this host's own `/api/trading` endpoints — there is no third-party URL in the
@@ -157,11 +167,12 @@ Two optional host services are bound when present, each behind an `typeof ctx.ge
 guard so a host that lacks them still loads the panel: `locale` (`bindPlatformLocale`, one-way —
 adopt the platform language until the user chooses) and `theme` (`bindPlatformTheme` — adopt
 `getTheme().active.colorScheme`, follow `theme/change` until the user chooses, then write the
-user's choice back through `service.setTheme()`, which the host persists). The panel paints
-itself from its own opaque palette in `.tm-layer` (`--tm-bg` / `--tm-text` / …) and only *maps*
-the host aliases (`--dsw-alias-*`) inside that scope: a host alias that is undefined would make
-`var(alias, fallback)` invalid at computed-value time — the fallback does not apply and the
-background would become transparent — so no panel surface depends on it.
+user's choice back through `service.setTheme()`, which the host persists). The panel paints itself
+from its own opaque palette in `.tm-page` (`--tm-bg` / `--tm-text` / …) and only *maps* the host
+aliases (`--dsw-alias-*`) inside that
+scope: a host alias that is undefined would make `var(alias, fallback)` invalid at
+computed-value time — the fallback does not apply and the background would become transparent —
+so no panel surface depends on it.
 
 ## Design invariants
 

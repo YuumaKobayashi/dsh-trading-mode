@@ -98,7 +98,17 @@ const SNAPSHOT = {
   asOf: Date.now(),
   quote: { price: 200, change: 1, changePct: 0.5, currency: 'USD', source: 'eastmoney', timestamp: Date.now() },
   profile: { name: 'Apple Inc.', exchange: 'NASDAQ', currency: 'USD' },
-  technical: { technical: { rsi14: 55, ma20: 195 }, bars: 120, interval: '1d', unavailable: [] },
+  technical: {
+    technical: { rsi14: 55, ma20: 195 },
+    bars: 120,
+    interval: '1d',
+    unavailable: [],
+    // The pivots the plugin computed: the only prices a level may be quoted from.
+    levels: {
+      support: [{ price: 100, touches: 3, lastTimestamp: 0 }],
+      resistance: [{ price: 120, touches: 2, lastTimestamp: 0 }],
+    },
+  },
   candles: [],
 };
 
@@ -164,6 +174,52 @@ async function main() {
     assert.equal(meta.provider, 'deepseek-official');
     assert.ok(meta.disclaimer, 'the disclaimer must be attached');
     assert.ok(!/Simplified Chinese/.test(llm.calls[0].system), 'English runs must not carry the localisation directive');
+  });
+
+  await check('invented price levels are dropped and reported (0.8.2 regression)', async () => {
+    const invented = JSON.stringify({
+      ...JSON.parse(ANALYSIS),
+      supportLevels: [12345, 100],
+      resistanceLevels: [55],
+    });
+    const llm = fakeLlm({ chunks: textStream(invented) });
+    const ai = new TradingAi({ llm, defaultModel });
+    const { analysis } = await ai.analyzeStock(SNAPSHOT, { lang: 'en' });
+    assert.deepEqual(analysis.supportLevels, [100], 'only the measured pivot may survive');
+    assert.deepEqual(analysis.rejectedLevels.support, [12345], 'the invented support price must be reported, not shown');
+    assert.deepEqual(analysis.resistanceLevels, [], 'a resistance price nobody measured must not be published');
+    assert.deepEqual(analysis.rejectedLevels.resistance, [55]);
+  });
+
+  await check('watchlist brief counts come from the input, not the model (0.8.2 regression)', async () => {
+    const brief = JSON.stringify({
+      headline: 'ok',
+      stocksTracked: 999,
+      upCount: -5,
+      downCount: 7,
+      strongestMover: 'TSLA',
+      largestDecline: 'NVDA',
+      unusualVolume: [],
+      keyObservations: [],
+    });
+    const llm = fakeLlm({ chunks: textStream(brief) });
+    const ai = new TradingAi({ llm, defaultModel });
+    const { brief: value } = await ai.watchlistBrief(
+      {
+        asOf: Date.now(),
+        stocks: [
+          { symbol: 'AAPL', market: 'US', quote: { price: 200, change: 1, changePct: 0.5, currency: 'USD' } },
+          { symbol: '0700.HK', market: 'HK', quote: { price: 400, change: -2, changePct: -0.5, currency: 'HKD' } },
+        ],
+      },
+      { lang: 'en' },
+    );
+    assert.equal(value.stocksTracked, 2, 'the tracked count must be counted, not read from the answer');
+    assert.equal(value.upCount, 1, 'one row is up, whatever the model claimed');
+    assert.equal(value.downCount, 1);
+    assert.match(String(value.strongestMover), /AAPL/, 'a mover must be a stock that exists in the input');
+    assert.match(String(value.largestDecline), /0700\.HK/);
+    assert.ok(!/TSLA|NVDA/.test(JSON.stringify(value)), 'invented tickers must not survive');
   });
 
   await check('watchlistBrief sends the localisation directive and counts stocks', async () => {

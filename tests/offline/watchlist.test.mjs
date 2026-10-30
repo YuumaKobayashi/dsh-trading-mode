@@ -142,4 +142,63 @@ if (!zodPath) {
   });
 }
 
+await suite.check('concurrent adds serialise into one valid file (0.8.2 regression)', async () => {
+  const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'trading-watchlist-race-'));
+  const store = new WatchlistStore({ homeDir: home });
+  try {
+    await store.init();
+    const samples = [
+      { symbol: 'AAPL', market: 'US' },
+      { symbol: '0700.HK', market: 'HK' },
+      { symbol: '600519.SH', market: 'CN' },
+      { symbol: '7203.T', market: 'JP' },
+    ];
+    // Every save used to share `<file>.<pid>.tmp`, so concurrent writes renamed
+    // each other's half-written temp file and left the JSON truncated.
+    await Promise.all(samples.map((sample) => store.add('local-1', sample)));
+    const rows = await store.list('local-1');
+    assert.equal(rows.length, samples.length, `concurrent adds kept ${rows.length} of ${samples.length} rows`);
+    const onDisk = JSON.parse(await fs.promises.readFile(path.join(home, 'trading-mode', 'watchlist.json'), 'utf8'));
+    assert.equal(onDisk.items.length, samples.length, 'the file must parse and hold every row');
+    const leftovers = (await fs.promises.readdir(path.join(home, 'trading-mode'))).filter((name) => name.endsWith('.tmp'));
+    assert.deepEqual(leftovers, [], `temporary files were left behind: ${leftovers.join(', ')}`);
+    return `${samples.length} concurrent adds wrote one valid file`;
+  } finally {
+    await store.dispose();
+    await fs.promises.rm(home, { recursive: true, force: true });
+  }
+});
+
+await suite.check('a failed save leaves memory unchanged (0.8.2 regression)', async () => {
+  const home = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'trading-watchlist-rollback-'));
+  const store = new WatchlistStore({ homeDir: home });
+  try {
+    await store.init();
+    await store.add('local-1', { symbol: 'AAPL', market: 'US' });
+    // Make the atomic rename impossible: the target path is a directory, which
+    // every platform refuses to replace with a file.
+    const blocker = path.join(home, 'trading-mode', 'watchlist.json');
+    await fs.promises.rm(blocker, { force: true });
+    await fs.promises.mkdir(blocker, { recursive: true });
+    await assert.rejects(
+      () => store.add('local-1', { symbol: 'MSFT', market: 'US' }),
+      (err) => err && (err.code === 'STORAGE_ERROR' || /persist|storage/i.test(err.message || '')),
+      'a save that cannot be persisted must surface as a storage error',
+    );
+    const rows = await store.list('local-1');
+    assert.deepEqual(
+      rows.map((row) => row.symbol),
+      ['AAPL'],
+      'the unsaved row must not stay in memory',
+    );
+    await fs.promises.rmdir(blocker);
+    const saved = await store.add('local-1', { symbol: 'MSFT', market: 'US' });
+    assert.equal(saved.item.symbol, 'MSFT', 'a later save must succeed once storage is writable again');
+    return 'failed add rolled back, next add persisted';
+  } finally {
+    await store.dispose();
+    await fs.promises.rm(home, { recursive: true, force: true });
+  }
+});
+
 process.exit(exitCodeFor(suite.finish()));

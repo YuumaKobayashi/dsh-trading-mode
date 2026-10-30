@@ -1,13 +1,13 @@
 # 兼容性：已验证环境与能力边界
 
 本文件只写**实测过**的东西：跑过的命令、量到的版本、真实出数的数据源；没实测的一律标 `未验证`。**未经测试的平台
-不作为支持承诺**，只按社区反馈逐步加入。当前插件版本 `dsh-trading-mode@0.8.1`。
+不作为支持承诺**，只按社区反馈逐步加入。当前插件版本 `dsh-trading-mode@0.8.2`。
 
 ## 已验证环境矩阵
 
 | 平台 | 操作系统版本 | Node | DSH | 安装方式 | 离线测试 | 装机校验 | AI | 验证日期 | 备注 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Windows x64（`win32` / `x64`） | `Microsoft Windows NT 10.0.26300.0`；注册表 `CurrentBuild=26300`、`UBR=9550`、`DisplayVersion=26H2`、`EditionID=CoreCountrySpecific`、`ProductName=Windows 10 Home China` | `v24.15.0`（npm 11.12.1） | 桌面宿主 `0.2.0-rc.2`（`@deepseek-ai/dsh-desktop-runtime@0.2.0-rc.2`，内含 `@deepseek-ai/cordis@4.0.4`，满足 peer `^4.0.1`） | 工作区以 `link:` 装进 profile 的 `node_modules` + `dsh.profile.bundles`，DSH 进程重启后加载 | `13 passed, 0 failed, 0 skipped` | `6/6 install checks passed` | 可用；实测路由 `deepseek-official/deepseek-flash` | 2026-10-10 | 单机桌面场景；`verify-install` 报 junction → working tree |
+| Windows x64（`win32` / `x64`） | Windows x64（具体系统构建号及地区版本已脱敏） | `v24.15.0`（npm 11.12.1） | 桌面宿主 `0.2.0-rc.2`（`@deepseek-ai/dsh-desktop-runtime@0.2.0-rc.2`，内含 `@deepseek-ai/cordis@4.0.4`，满足 peer `^4.0.1`） | 工作区以 `link:` 装进 profile 的 `node_modules` + `dsh.profile.bundles`，DSH 进程重启后加载 | `13 passed, 0 failed, 0 skipped` | `6/6 install checks passed` | 可用；实测路由 `deepseek-official/deepseek-flash` | 2026-10-10 | 单机桌面场景；`verify-install` 报 junction → working tree |
 | Windows x64（`win32` / `x64`） | 同上（同一台机器，宿主升级后复测） | `v24.15.0`（npm 11.12.1） | 桌面宿主 `0.2.1-rc.2`（`dsh --version` → `0.2.1-rc.2`；`app.asar` 根 `package.json` = `@deepseek-ai/dsh-desktop@0.2.1-rc.2`；内含 `@deepseek-ai/cordis@4.0.5`，满足 peer `^4.0.1`） | 工作区仍以 `link:` 装进同一 profile，宿主升级后**不改任何配置**直接加载 | `13 passed, 0 failed, 0 skipped`（153 项检查） | `6/6 install checks passed` | 可用；`GET /api/trading/health` → `api:"ready"` / `fence:"host"` / `identity:"host-anonymous-id"`；客户端两处 slot 均 `active:true` | 2026-10-18 | 升级复测：同一份 0.8.1 代码、同一 profile |
 
 量法（`0.2.0-rc.2`，2026-10-10）：`node -v` → `v24.15.0`、`process.platform/arch` → `win32 x64`；版本细节取自注册表
@@ -22,12 +22,21 @@ pnpm 11.28.5）；`app.asar` 根 `package.json` = `@deepseek-ai/dsh-desktop@0.2.
 文件树（`ELECTRON_RUN_AS_NODE=1` + Electron 的 asar 支持，普通 `node` 读不进去）：`@deepseek-ai/cordis@4.0.5`、
 `@deepseek-ai/dsh@0.2.1-rc.2`，`@deepseek-ai` 作用域下 **306** 个包全部是 `0.2.1-rc.2`；插件声明为 peer 的
 `@deepseek-ai/dsh-anonymous-user-id` / `dsh-llm` / `dsh-storage-domain` 都在。
-运行时复测：`GET http://127.0.0.1:52476/api/trading/health` → `200` 且 `api:"ready"` / `fence:"host"` /
+运行时复测：`GET http://127.0.0.1:<port>/api/trading/health` → `200` 且 `api:"ready"` / `fence:"host"` /
 `identity:"host-anonymous-id"`；`cordis_inspect_query(client, Slots, listSubTree)` 在 `shell.overlay`（order 500）
-与 `conversation.session.header.actions`（order 30）都看到 `registrant:"trading-mode"`、`active:true`；插件用到的宿主
+与 `conversation.session.header.actions`（order 30）都看到 `registrant:"trading-mode"`、`active:true`（0.8.1 形态，
+0.8.2 已改为侧栏入口，见下）；插件用到的宿主
 能力签名未变 —— `connection.requestRejection(ConnectionTrustRequest)`、`connection.createSharedFetchHandler('/api')`、
 `webServer.register(WebRoute)`、`storageDomain.open/get/closeAll`、`llm` 服务在列；`lib/client.js` 只 `require('react')`，
 不绑定其它客户端包。
+
+**0.8.2 的客户端注册变化**：`shell.overlay` 已移除，改为 `sidebar.panellist`（id `trading-mode`，order 2，紧接
+`dsh-market` 的 order 1）与 `main`（key `trading-mode`）两处注册；会话标题栏按钮已撤销，左侧栏是唯一入口。
+离线契约测试覆盖了这两处注册与侧栏图标。2026-10-30 在本机桌面宿主上复测：
+`cordis_inspect_query(client, Slots, listSubTree)` 的 `sidebar.panellist` occupants 有
+`{registrant:"trading-mode", id:"trading-mode", order:2, active:true}`（排在 `dsh-market` order 1 之后），
+`main` occupants 有 `{registrant:"trading-mode", key:"trading-mode", active:true}`，`shell.overlay` 与
+`conversation.session.header.actions` 的 occupants 中均无 `trading-mode` 条目。
 
 ## 已知的宿主侧变动（`0.2.0-rc.2` → `0.2.1-rc.2`）
 
@@ -59,10 +68,12 @@ pnpm 11.28.5）；`app.asar` 根 `package.json` = `@deepseek-ai/dsh-desktop@0.2.
 - **Node.js `>=20`**：来自 `package.json` 的 `engines.node: ">=20"`；插件**不带运行时依赖**，`npm test` 在全新 clone
   上离线可过。只有 `v24.15.0` 实测过，其余版本按上表记为 `未验证`。
 - **DSH**：需要同时具备宿主侧 `connection`、`webServer` 服务与客户端 `ui-slots`（`@deepseek-ai/dsh-client-ui-slots`）。
-  `connection` 提供 `requestRejection(req)`，`webServer` 提供前缀路由注册，`ui-slots` 提供 header 按钮与
-  `shell.overlay` 浮层；`llm` / `dsh-storage-domain` 缺失只降级（AI 报 `AI_UNAVAILABLE`、自选股回落文件存储）。
+  `connection` 提供 `requestRejection(req)`，`webServer` 提供前缀路由注册，`ui-slots` 提供左侧栏行
+  （`sidebar.panellist`）与主面板（`main`）；0.8.2 起不再使用 `shell.overlay` 浮层，也不再注册会话标题栏按钮。
+  `llm` / `dsh-storage-domain` 缺失只降级（AI 报 `AI_UNAVAILABLE`、自选股回落文件存储）。
 - 自查：`node -v` ≥ 20；`cordis_inspect_query(host, Service, listService)` 里有 `connection` 与 `webServer`；
-  `cordis_inspect_query(client, Slots, listSubTree)` 能看到 `conversation.session.header.actions` 与 `shell.overlay`；
+  `cordis_inspect_query(client, Slots, listSubTree)` 能看到 `sidebar.panellist` 的 `trading-mode` 行与
+  `main` 的 `trading-mode` 面板，且 `conversation.session.header.actions` 中没有该插件的按钮；
   `GET /api/trading/status` 回 `config.networkMode` / `config.providerChains` / `ai.reason`；`npm run verify:install`
   校验 profile 装的就是这份代码。
 

@@ -247,9 +247,9 @@ IPv6 `2408:4003:1046:b904:a881:8b7f:71a8:c227` 3/3 `200`（43–230ms），IPv4 
 
 | 事实 | 证据 |
 | --- | --- |
-| 安装进**正在运行**的 profile | `plugin_manager(install_bundle, target=<本目录>)` → `stage:"enable"`, `application:"applied"`, pnpm `exitCode:0`，生成依赖 `dsh-trading-mode link:C:/…/dsh-trading-mode`；日志落在 `~/.dsh/profiles/desktop/.plugin-manager/logs/operation-ROE5D8/pnpm.log`（由此确认运行中的 profile 是 `desktop`） |
+| 安装进**正在运行**的 profile | `plugin_manager(install_bundle, target=<本目录>)` → `stage:"enable"`, `application:"applied"`, pnpm `exitCode:0`，生成依赖 `dsh-trading-mode link:<project-root>`；日志落在 `<DSH-profile>/.plugin-manager/logs/<operation-id>/pnpm.log`（由此确认运行中的 profile 是 `desktop`） |
 | Loader 行存在 | `bundles` 总数 19 → **20**；新条目 `dsh-trading-mode`（安装时 0.2.1，因是 `link:` 安装，工作区源码即运行时版本，现为 0.4.0），`rows:[{rowId:"trading-mode", moduleName:"dsh-trading-mode", entryId:"include:trading-mode"}]`；`Config.listConfigs({name:"dsh-trading-mode"})` 返回 `include:trading-mode` |
-| 宿主 API 已挂载 | `curl -i http://127.0.0.1:19387/api/trading/status` → `401` + **本插件的信封** `{"ok":false,"error":{"code":"UNAUTHENTICATED",…}}`，响应头带 `content-type: application/json; charset=utf-8` 与 `cache-control: no-store, no-cache, must-revalidate`；对照 `/api/definitely-not-a-route-xyz` → `401` 且正文是裸 `unauthorized`（无这些头）→ 前缀路由确实由本插件接管 |
+| 宿主 API 已挂载 | `curl -i http://127.0.0.1:<port>/api/trading/status` → `401` + **本插件的信封** `{"ok":false,"error":{"code":"UNAUTHENTICATED",…}}`，响应头带 `content-type: application/json; charset=utf-8` 与 `cache-control: no-store, no-cache, must-revalidate`；对照 `/api/definitely-not-a-route-xyz` → `401` 且正文是裸 `unauthorized`（无这些头）→ 前缀路由确实由本插件接管 |
 | 客户端 slot 已注册 | `Slots.listSubTree({root:"conversation.session.header.actions"})` 的 occupants 新增 `{registrant:"trading-mode", id:"trading-mode", order:30, active:true}`（其余 5 个 `mf/*` 条目不受影响） |
 | 热加载 | 安装后**未重启**即生效（row 与 slot 都在运行中的进程里出现） |
 | 依赖解析 | 从该 profile 解析 `@deepseek-ai/dsh-llm` / `dsh-storage-domain` / `dsh-anonymous-user-id` 均成功，且分别导出 `BlockAssembler`+`createUserMessage` / `defineDomain`+`domainTable` / `getOrCreateAnonymousUserId`（插件对这四处全部用 try/catch 动态 import，缺失即降级） |
@@ -767,8 +767,10 @@ CSS 的处理是 *invalid at computed-value time*：**fallback 不生效、该�
 
 ## 5. 已知限制
 
-1. 面板是**非模态**浮层（`pointer-events: none` 的容器 + `auto` 的窗口）：0.8.1 只保证窗口自身不透明，
+1. 0.8.1 的面板是**非模态**浮层（`pointer-events: none` 的容器 + `auto` 的窗口）：0.8.1 只保证窗口自身不透明，
    **没有**给背后聊天加变暗遮罩，也没有抢走点击。若需要「模态 + 背景变暗」是另一个改动。
+   **0.8.2 起已改为左侧栏主面板整页**（`sidebar.panellist` + `main` key `trading-mode`，`.tm-page`），
+   不再有浮层、遮罩与关闭按钮；本条只记录 0.8.1 当时的形态。
 2. 浅色方案是**新增的一套手工调色**，只在本地由静态断言与人工目视覆盖；没有跨主题视觉回归测试。
 3. 宿主 `theme` 服务是可选 peer：它不存在时配色只在本会话生效（README/PRIVACY 已如实写明）。
 

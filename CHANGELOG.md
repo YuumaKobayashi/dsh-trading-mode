@@ -2,6 +2,106 @@
 
 本文件记录 `dsh-trading-mode` 的对外变更。版本号遵循 semver；`0.x` 期间 minor 版本可能含行为变更。
 
+## 未发布
+
+把「搜索」和「添加股票」合并成同一件事：页面上只留顶部一个搜索框，结果以悬浮层出现，每行右侧的 `+` 直接加入自选。
+同时把加密货币从 8 枚磁贴扩成 20 枚，并支持像股票一样搜索、加自选。
+
+### 修复
+
+- **搜索结果一直为空**：`/search` 的响应经 `service.envelope()` 包成 `{ data, meta }`，结果行实际在
+  `payload.data.results`；客户端此前读 `payload.results`（永远 `undefined`），于是后端明明命中了股票，面板却一直显示
+  「没有找到匹配的股票」。新增 `searchRowsOf()` 统一解包（同时接受扁平结构），并在 `tests/offline/client.test.mjs`
+  加了回归断言。
+- **搜不到同名加密货币**：搜索按 `symbol` 去重，而裸币名常与美股 ticker 撞名（`BTC` = Grayscale Bitcoin Mini Trust、
+  `SUI` = Sun Communities、`APT` = Alpha Pro Tech、`ARB` = AltShares Merger Arbitrage ETF），股票结果先到就把币行吞掉，
+  `SUI`/`APT`/`ARB`/`比特币` 因此搜不到币。`searchRemote()` 与 `search()` 的去重键改为 `market:symbol`，同拼写的股票和
+  币现在各占一行（币在前），回归断言在 `tests/offline/router.test.mjs`。
+- **加密货币报价串味**：`CACHE_KEYS.quote`/`candles`/`profile`/`technical` 原本不带市场，先缓存的美股 `BTC` 报价会在
+  TTL 内被币的请求读到（实测加密 `BTC` 返回过 US$35.67）。键改为 `quote:CRYPTO:BTC` 这种带市场的形状（未传市场时保持
+  旧形状），`tests/offline/config.test.mjs` 锁定。
+- **加密货币加不进自选**：`POST /watchlist` 取报价时没带 `market`，裸 `BTC` 会被解析成美股。现在把请求里的 `market`
+  一并传给 `getQuote()`。
+
+### 变更
+
+- **币种更多**：市场总览的加密标签页从 8 枚（`BTC`…`TRX`）扩到 20 枚（新增 `AVAX`、`LINK`、`DOT`、`POL`、`SHIB`、`LTC`、
+  `BCH`、`TON`、`XLM`、`UNI`、`ATOM`、`SUI`），每枚磁贴显示币名（`比特币` 等，来自 CoinLore 目录），并可直接点 `+`
+  加入自选；加密标签页右上角的 `All coins`（全部币种）一键打开按页浏览的 1000+ 币目录，同样逐行 `+` 添加。
+- **唯一搜索框**：删除 `UniverseBrowser` 自带的第二个搜索框（`Filter listings — code or company name`）及其
+  `/universe?q=` 分支与 `/search` 回退；页面现在只有一个 `.tm-input`，即顶部搜索。
+- **悬浮结果层**：搜索结果从把自选列表向下推的 `ul.tm-results` 内联列表，改为 `.tm-search__panel` 绝对定位浮层
+  （`max-height: min(56vh, 430px)`，`z-index: 40`），打开搜索不再挤压下方内容；Esc 关闭、↑/↓ 选行、Enter 打开、
+  点击面板外关闭；拼音输入法组词期间（`compositionstart`…`compositionend`）不触发检索。
+- **每行一个 `+`**：结果行右侧固定按钮加入自选，已在自选里的行按钮禁用并显示星标（乐观更新，批量加入不必等刷新）；
+  点击行其余区域仍进入个股详情。`addMode` / `Add Stock` 模式整体移除，`+` 始终可用。
+- **浏览清单改为按需展开**：`Add Stock` 按钮变成 `Browse listings`（`browseMode` 默认关闭），只做「按板块翻页看有哪些
+  股票」，不再承担搜索。
+
+### 兼容性
+
+- 无 `/api/trading/*` 路由或响应结构变更；请求/响应字段保持兼容。服务端缓存键改为按市场区分，旧缓存条目会自然过期。
+  客户端改动在 `lib/client.js`，服务端在 `lib/trading/{config,service,api}.js`，测试在
+  `tests/offline/{client,config,router}.test.mjs`。
+
+## 0.8.2
+
+修复 0.8.1 的五个问题（其中两个会造成数据损坏或安全例外失效），并补齐插件显示元数据。
+同时把 Trading Mode 从「只有会话标题栏能打开」的浮层，改成宿主左侧栏的常驻入口。
+
+### 修复
+
+- **并发保存不再损坏自选股文件**：`lib/trading/watchlist.js` 的每次变更现在走同一条串行队列（`mutate()`），
+  临时文件改为 `<文件>.<pid>.<序号>.<随机>.tmp`，两次保存不再共用同一个暂存文件。
+- **保存失败会回滚内存**：写盘失败时 `add` / `remove` / `reorder` / `setFavorite` 撤销自己刚做的内存改动并抛出
+  `STORAGE_ERROR`，接口报错后列表里不会留下重启就消失的幽灵行。
+- **删除配置后不再残留**：`applyUserConfig` 现在无条件调用 `setNetworkMode()` 与 `setAllowUnfencedLoopback()`，
+  从 `cordis.patch.yml` 删掉 `networkMode` / `security.allowUnfencedLoopback` 后重新加载会回到默认值
+  （`auto` / fail-closed），而不是沿用上一次加载的开关。
+- **AI 输出必须与输入一致**：Watchlist Brief 的 `stocksTracked` / `upCount` / `downCount` 由程序按输入行计算，
+  `strongestMover` / `largestDecline` 必须是输入里存在的股票。单股分析的支撑／阻力位只接受由 K 线枢轴与
+  MA20/50/200、52 周高低点算出的候选价（±1%），编造的价位被丢弃并记入 `rejectedLevels`。
+- **同键并发请求合并为一次加载**：`MarketDataCache.through()` 按缓存键共享正在执行的 Promise，冷缓存下
+  20 个相同请求只打一次上游，加载结束即释放。
+- **清理只注册一次**：`apply()` 在有 `ctx.effect` 时不再同时返回 disposer，重连时清理不会跑两遍。
+
+### 新增
+
+- **插件显示元数据**：`locale/en.json`、`locale/zh.json`（`meta.title` / `meta.description`）与 `icon.svg`，
+  manifest 补上 `./icon`、`./locale/*.json` 导出和 `files` 条目。
+- **依赖声明与实际 import 对齐**：`zod` 从 devDependencies 提升为可选 peer（`watchlist.js` 运行时确实
+  `import('zod')`），移除从未被 import 的 `@deepseek-ai/dsh-llm` peer。
+- **删除死代码**：`lib/trading/log.js` 全仓库零引用，删除。
+
+### 变更
+
+- **左侧栏常驻入口**：`lib/client.js` 不再注册 `shell.overlay`，改为注册宿主的 `sidebar.panellist` 行
+  `trading-mode`（order 2，紧跟「插件市场」之后、「自动化任务」之前，窗口再矮也无需滚动）和 `main` 面板
+  （key `trading-mode`），未打开会话也能进入。
+  `TradingApp` 随之从居中浮层（`.tm-layer` / `.tm-window`）改为占满主面板的整页（`.tm-page`）：
+  去掉遮罩、固定窗口尺寸、关闭按钮与 Escape 关闭；头部保留品牌、Home / 个股标签、状态条、主题与语言开关。
+- **撤销标题栏按钮**：会话标题栏不再注册 Trading Mode，左侧栏是唯一入口；`layout` 注入与
+  `openTradingPanel()` / `TradingButton` 一并移除。
+- **侧栏标签跟随面板语言**：`label` 是惰性函数
+  `() => translate('Trading Mode', effectiveLang(store.get()))`，在面板里切换 EN / 中文后侧栏行同步更新。
+
+### 测试
+
+- 新增 `tests/offline/cache.test.mjs`（3 项）：冷键并发合并、in-flight 释放、失败不缓存可重试。
+- `watchlist.test.mjs` 新增 2 项：4 个并发 `add` 只写出一份合法文件且不留 `.tmp`；rename 失败时内存回滚。
+- `config.test.mjs` 新增 1 项：用空配置重载会清掉上一次的 `networkMode` 与安全例外。
+- `ai.test.mjs` 新增 2 项：编造价位被丢弃并上报；Brief 计数与涨跌股以输入为准。
+- `client.test.mjs` 的注册契约改为 2 处（`main` / `sidebar.panellist`），断言侧栏行 order 2、
+  图标尺寸、`label` 惰性函数，并确认会话标题栏没有该插件的按钮；CSS 断言改查 `.tm-page`，
+  "关闭时不渲染" 改为 "无会话也渲染主面板"。
+- 离线门禁：14 个套件、161 项检查，0 failed。
+
+### 兼容性
+
+- 无 API 变更；`/api/trading/*` 的响应只多出 `rejectedLevels` 字段。
+- 客户端 slot 注册变化：新增 `sidebar.panellist` 行与 `main` 面板，移除 `shell.overlay` 与会话标题栏按钮。
+  宿主需要提供 `sidebar.panellist` 与 `main`（DSH `0.2.1-rc.2` 已具备）。
+
 ## 0.8.1
 
 面板配色补丁：窗口可以在**黑底白字**与**白底黑字**之间切换，并且**不再透明** ——

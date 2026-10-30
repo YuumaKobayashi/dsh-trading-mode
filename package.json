@@ -1,6 +1,6 @@
 {
   "name": "dsh-trading-mode",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "DSH Trading Mode — AI 驱动的行情研究 / Watchlist 助手（美股 + 港股 + A 股 + 日股 + 加密货币）：五市场清单浏览、股票搜索、行情、市场指数、K 线、技术指标、DeepSeek 单股分析与 Watchlist Brief，中英双语界面，并提供 TradingView 内嵌图表与数据来源页面跳转。只做研究，不做交易。",
   "keywords": [
     "dsh",
@@ -24,10 +24,13 @@
   ],
   "type": "module",
   "main": "lib/index.js",
+  "icon": "./icon.svg",
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./icon": "./icon.svg",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
@@ -35,6 +38,8 @@
     "docs",
     "scripts",
     "tests",
+    "locale/*.json",
+    "icon.svg",
     "cordis.patch.yml",
     "README.md",
     "CHANGELOG.md",
@@ -77,17 +82,17 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-anonymous-user-id": "*",
-    "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/dsh-storage-domain": "*"
+    "@deepseek-ai/dsh-storage-domain": "*",
+    "zod": "^3.24.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-anonymous-user-id": {
       "optional": true
     },
-    "@deepseek-ai/dsh-llm": {
+    "@deepseek-ai/dsh-storage-domain": {
       "optional": true
     },
-    "@deepseek-ai/dsh-storage-domain": {
+    "zod": {
       "optional": true
     }
   },

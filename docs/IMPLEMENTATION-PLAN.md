@@ -143,9 +143,11 @@ GET|DELETE|PATCH /api/trading/watchlist/:symbol  {isFavorite}
 
 ## 10. Trading UI 修改方案
 
-- 挂载点不变：`conversation.session.header.actions`（「Trading Mode」按钮）+ `shell.overlay`（全帧浮层，
-  `pointer-events` 只在实际控件上打开）；状态放在模块级 store，两个 slot 共享
-- Home：Search Stocks + My Watchlist（价格/涨跌%/时间戳/收藏/排序/删除）+ `[+ Add Stock]` + AI Watchlist Brief
+- 挂载点（0.8.2 起）：`sidebar.panellist`（id `trading-mode`，order 2，左侧栏「插件市场」之后、「自动化任务」之前）+
+  `main`（key `trading-mode`，占满主面板的整页 `.tm-page`）；左侧栏是唯一入口，会话标题栏按钮与 `shell.overlay`
+  都已移除。状态放在模块级 store，侧栏行 / 页面共享
+- Home：Search Stocks（页面唯一搜索框，结果以悬浮层展示，每行右侧 `+` 直接加入自选）+ My Watchlist（价格/涨跌%/时间戳/收藏/排序/删除）
+  + `[ 浏览上市清单 ]`（按需展开，不再自带过滤框）+ AI Watchlist Brief
 - Detail：公司名/symbol/交易所/价格/涨跌%/`Updated HH:MM:SS`/区间 `1D 5D 1M 3M 6M 1Y 5Y`/自绘 SVG K 线 + MA20/50/200 +
   Market Data + Technical（§29 全量）+ AI Analysis（Trend/Momentum/Volume/Support/Resistance/Risk/Observations）
 - **保留** TradingView 内嵌图表开关（`widgetembed` iframe）；不保留旧的 Binance 硬编码

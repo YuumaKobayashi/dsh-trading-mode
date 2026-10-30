@@ -21,3 +21,16 @@ desktop.ini
 .idea/
 .vscode/
 *.swp
+
+# local credentials and private keys
+.env
+.env.*
+!.env.example
+!.env.sample
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519

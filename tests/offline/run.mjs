@@ -31,6 +31,7 @@ const SUITES = [
   ['config', 'config.test.mjs'],
   ['transport', 'transport.test.mjs'],
   ['limits', 'limits.test.mjs'],
+  ['cache', 'cache.test.mjs'],
   ['router', 'router.test.mjs'],
   ['api', 'api.test.mjs'],
   ['fence', 'fence.test.mjs'],

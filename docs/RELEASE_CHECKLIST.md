@@ -124,13 +124,28 @@ instead):
       nothing may keep dark colours in the light scheme (or the reverse).
 - [ ] The window must stay **opaque**: no part of the conversation behind the panel may show through, in
       either scheme. The static guarantee is asserted in `tests/offline/client.test.mjs`
-      (`.tm-window` / `.tm-status__pop` are painted from `--tm-*` and do not name a `--dsw-alias-*` token),
+      (`.tm-page` / `.tm-status__pop` are painted from `--tm-*` and do not name a `--dsw-alias-*` token),
       but the visual check is still the human step this box records.
 - [ ] With a host that exposes the client `theme` service, the choice must survive a reload (DSH persists
       its own theme preference). Without that service the panel must still switch, silently, for the
       session only — no console error, no failed request, no plugin write.
 - [ ] `npm run test:client` passes (28 checks) — the three theme checks cover the switch, the
       follow-until-chosen precedence, and the opaque-palette CSS assertions.
+
+## 3c. Sidebar entry (0.8.2)
+
+- [ ] After a page refresh, the left sidebar shows a **Trading Mode** row directly below **插件市场**
+      (`order 2`, above **自动化任务**), with the chart glyph, and it is visible **before any conversation
+      exists** and without scrolling on a short window.
+- [ ] Clicking that row selects the trading page as the main panel: header (brand, Home/detail tabs, status
+      strip, Dark/Light, EN/中文), scrollable body and the two disclaimers. There is no modal backdrop and no
+      close button; leaving the page means selecting another host panel.
+- [ ] The session header has **no** Trading Mode button any more — not in a fresh session, not after
+      running a turn; the sidebar row is the only entry point.
+- [ ] Switching EN / 中文 inside the page relabels the sidebar row on the next render.
+- [ ] `cordis_inspect_query(client, Slots, listSubTree)` lists the plugin under `sidebar.panellist`
+      (id `trading-mode`, order 2) and `main` (key `trading-mode`), both `active:true`; no `shell.overlay`
+      and no `conversation.session.header.actions` registration remains.
 
 ## 4. Storage and isolation
 

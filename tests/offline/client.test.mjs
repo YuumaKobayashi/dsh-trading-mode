@@ -175,7 +175,7 @@ await check('factory resolves react and returns { name, inject, apply }', async 
 
 const registry = [];
 const effects = [];
-await check('apply registers the trigger button and the overlay app', async () => {
+await check('apply registers the sidebar row and its main panel', async () => {
   // The registration contract is the one the shipped third-party plugins use on
   // the live runtime: `ctx.slots.inject(key, callback)` with a PLAIN callback
   // that returns the registration's disposer (not a generator), and
@@ -202,7 +202,9 @@ await check('apply registers the trigger button and the overlay app', async () =
       },
       register(options, Component) {
         assert(typeof Component === 'function', 'slot registration must pass a component function');
-        const entry = { key: activeKey, options, Component };
+        // The registration names its slot; one `inject` can register several
+        // slots (the sidebar row and the page it selects are registered together).
+        const entry = { key: options.name, injectKey: activeKey, options, Component };
         registry.push(entry);
         return () => {
           const at = registry.indexOf(entry);
@@ -214,16 +216,27 @@ await check('apply registers the trigger button and the overlay app', async () =
   mod.apply(ctx);
 
   assert(registry.length === 2, `expected 2 slots, got ${registry.length}`);
-  const header = registry.find((entry) => entry.key === 'conversation.session.header.actions');
-  const overlay = registry.find((entry) => entry.key === 'shell.overlay');
-  assert(header, 'the header action slot must be populated');
-  assert(overlay, 'the shell.overlay slot must be populated');
-  for (const entry of registry) {
-    assert(entry.options.name === entry.key, 'registration name must match the slot key');
-    assert(typeof entry.options.id === 'string' && entry.options.id.length > 0, 'each registration needs a stable id');
-    assert(typeof entry.options.order === 'number', 'each registration needs an order');
-    assert(typeof entry.Component === 'function', 'registration must carry a component');
-  }
+  const row = registry.find((entry) => entry.key === 'sidebar.panellist');
+  const page = registry.find((entry) => entry.key === 'main');
+  assert(row, 'the sidebar.panellist row must be populated');
+  assert(page, 'the main page must be populated');
+  assert(row.options.id === 'trading-mode', 'the sidebar row must carry the panel id');
+  assert(row.options.order === 2, `the row must sit directly below 插件市场, got order ${row.options.order}`);
+  assert(typeof row.options.label === 'function', 'the row label must be lazy so it follows the language');
+  assert(page.options.key === 'trading-mode', 'the main panel key must be the sidebar row id');
+  assert(!('id' in page.options), 'keyed main panels register a key, not an id');
+  assert(
+    row.injectKey === 'sidebar.panellist' && page.injectKey === 'sidebar.panellist',
+    'the row and its page must be gated on the same sidebar slot',
+  );
+  assert(
+    registry.every((entry) => entry.key !== 'conversation.session.header.actions'),
+    'the session header must stay free of the Trading Mode button',
+  );
+  assert(typeof row.options.id === 'string' && row.options.id.length > 0, 'the row needs a stable id');
+  assert(typeof row.options.order === 'number', 'the row needs an order');
+  const glyph = renderToString(h(row.Component, { size: 18 }));
+  assert(glyph.includes('<svg') && glyph.includes('width="18"'), 'the row must draw the icon at the host size');
   assert(styleTags.length === 1, 'exactly one stylesheet must be injected');
   assert(effects.some((entry) => String(entry.label).includes('styles')), 'the stylesheet must be cleaned up on dispose');
   return `slots=${registry.map((entry) => entry.key).join(', ')}`;
@@ -278,27 +291,33 @@ await check('downsample keeps the first and last bar', async () => {
   return `${bars.length} → ${out.length} bars`;
 });
 
-await check('the overlay renders nothing while closed', async () => {
-  internals.store.set({ open: false, view: 'home', symbol: null });
+await check('the page renders as a main panel without a conversation', async () => {
+  internals.store.set({ view: 'home', symbol: null });
   const html = renderToString(h(internals.TradingApp));
-  assert(html === '', `closed app must render nothing, got ${html.length} chars`);
-  return 'empty';
+  assert(html.includes('tm-page'), 'the panel root must be the page, not the old overlay');
+  assert(html.includes('DSH Trading Mode'), 'the page keeps its brand header');
+  assert(!html.includes('tm-window'), 'the overlay window must be gone');
+  return `${html.length} chars`;
 });
 
 let homeHtml = '';
 await check('home view renders Search + My Watchlist + AI Watchlist Brief', async () => {
-  internals.store.set({ open: true, view: 'home', symbol: null });
+  internals.store.set({ view: 'home', symbol: null, browseMode: false });
   homeHtml = renderToString(h(internals.TradingApp));
-  for (const needle of ['DSH Trading Mode', 'My Watchlist', 'AI Watchlist Brief', 'Add Stock', 'Search Stocks']) {
+  for (const needle of ['DSH Trading Mode', 'My Watchlist', 'AI Watchlist Brief', 'Search Stocks', 'Browse listings']) {
     assert(homeHtml.includes(needle), `home view is missing "${needle}"`);
   }
+  // m00113: adding a stock is the + on a search result row, so no separate
+  // "Add Stock" mode may sit below the watchlist any more.
+  assert(!homeHtml.includes('Add Stock'), 'the old Add Stock button must be gone');
+  assert(!/Filter listings/.test(homeHtml), 'the page must not carry a second search field');
   assert(homeHtml.includes('Data source status') || homeHtml.includes('sources ready'), 'the data-source status strip must render');
   return `${homeHtml.length} chars`;
 });
 
 let detailHtml = '';
 await check('detail view renders the §27 sections', async () => {
-  internals.store.set({ open: true, view: 'detail', symbol: 'AAPL' });
+  internals.store.set({ view: 'detail', symbol: 'AAPL' });
   detailHtml = renderToString(h(internals.TradingApp));
   for (const needle of ['1D', '5D', '1M', '3M', '6M', '1Y', '5Y', 'Chart', 'Market Data', 'Technical Indicators', 'AI Analysis', 'Previous Close', 'TradingView']) {
     assert(detailHtml.includes(needle), `detail view is missing "${needle}"`);
@@ -446,7 +465,7 @@ await check('i18n: the platform language is adopted until the user chooses', asy
   const { store, setStore } = internals;
   const snapshot = { ...store.get() };
   try {
-    setStore({ view: 'home', open: true, symbol: null, lang: null, langSet: false, platformLang: 'zh' });
+    setStore({ view: 'home', symbol: null, lang: null, langSet: false, platformLang: 'zh' });
     assert(internals.effectiveLang(store.get()) === 'zh', 'platform language wins while nothing is chosen');
     const zhHtml = renderToString(h(internals.TradingApp));
     assert(/[\u4e00-\u9fff]/.test(zhHtml), 'a zh platform language must render Chinese copy');
@@ -467,7 +486,7 @@ await check('i18n: language toggle renders and a manual choice beats the server 
   const { store, setStore } = internals;
   const snapshot = { ...store.get() };
   try {
-    setStore({ view: 'home', open: true, symbol: null, lang: 'en', langSet: false, platformLang: 'en' });
+    setStore({ view: 'home', symbol: null, lang: 'en', langSet: false, platformLang: 'en' });
     const html = renderToString(h(internals.TradingApp));
     assert(html.includes('>EN<') || html.includes('English'), 'the English option must be rendered');
     assert(html.includes('中文'), 'the Chinese option must be offered');
@@ -489,7 +508,7 @@ await check('indices: the Market Overview strip renders on the home view', async
   const { store, setStore } = internals;
   const snapshot = { ...store.get() };
   try {
-    setStore({ view: 'home', open: true, symbol: null, lang: 'en', langSet: true, platformLang: 'en' });
+    setStore({ view: 'home', symbol: null, lang: 'en', langSet: true, platformLang: 'en' });
     const html = renderToString(h(internals.TradingApp));
     assert(html.includes('Market Overview'), 'the home view must show the market overview card');
     assert(/Index levels, not tradable prices/.test(html), 'index levels must not be presented as prices');
@@ -582,7 +601,7 @@ await check('0.5.0 markets: A-share, Tokyo and crypto links, formats and tabs', 
 
   const snapshot = { ...store.get() };
   try {
-    setStore({ open: true, view: 'home', lang: 'en', langSet: true, platformLang: 'en' });
+    setStore({ view: 'home', lang: 'en', langSet: true, platformLang: 'en' });
     const html = renderToString(h(MarketOverview, { onOpen() {} }));
     for (const label of ['US market', 'HK market', 'CN market', 'JP market', 'Crypto']) {
       assert(html.includes(`>${label}<`), `the overview strip needs a ${label} tab`);
@@ -594,14 +613,21 @@ await check('0.5.0 markets: A-share, Tokyo and crypto links, formats and tabs', 
 });
 
 await check('universe: the listing browser covers US/HK/CN/JP/crypto and localises', async () => {
-  const { store, setStore, UniverseBrowser, UniverseRow, UNIVERSE_PAGE_SIZE, TradingApp } = internals;
+  const { store, setStore, UniverseBrowser, UniverseRow, SearchRow, IndexCell, trackKey, CSS, UNIVERSE_PAGE_SIZE, TradingApp } = internals;
   assert(UNIVERSE_PAGE_SIZE === 100, `one upstream page holds 100 rows, got ${UNIVERSE_PAGE_SIZE}`);
   const snapshot = { ...store.get() };
   try {
-    setStore({ view: 'home', open: true, symbol: null, lang: 'en', langSet: true, platformLang: 'en', addMode: true });
+    // m00113: the page carries exactly ONE search field, the one at the top.
+    setStore({ view: 'home', symbol: null, lang: 'en', langSet: true, platformLang: 'en', browseMode: false });
+    const plain = renderToString(h(TradingApp));
+    assert((plain.match(/tm-input/g) || []).length === 1, 'the home page renders exactly one search field');
+    assert(!plain.includes('tm-universe'), 'the listing browser stays closed until it is asked for');
+
+    setStore({ browseMode: true });
     const html = renderToString(h(TradingApp));
-    assert(/Browse all US, HK, CN, JP (&amp;|&) crypto listings/.test(html), 'the Add Stock flow must offer the full listing browser');
-    assert(html.includes('Filter listings'), 'the browser needs a filter box');
+    assert(/Browse all US, HK, CN, JP (&amp;|&) crypto listings/.test(html), 'Browse listings opens the full listing browser');
+    assert(!/Filter listings/.test(html), 'the browser has no second search box of its own');
+    assert((html.match(/tm-input/g) || []).length === 1, 'opening the browser must not add a second search field');
     assert(html.includes('Load entire board'), 'the browser must be able to walk a whole board');
     assert(/tm-universe/.test(html), 'the browser must render its own scoped container');
 
@@ -613,6 +639,75 @@ await check('universe: the listing browser covers US/HK/CN/JP/crypto and localis
 
     const direct = renderToString(h(UniverseBrowser, { onAdd() {}, owned: new Set() }));
     assert(/Load entire board/.test(direct), 'the browser renders standalone too');
+    assert(!/tm-input/.test(direct), 'the standalone browser has no search field of its own');
+
+    // Every search result row is the add affordance itself: + on the right.
+    const addRow = renderToString(
+      h(SearchRow, {
+        row: { symbol: '0700.HK', name: 'Tencent Holdings', nameZh: '腾讯控股', market: 'HK', exchange: 'HKEX', currency: 'HKD' },
+        active: false,
+        owned: false,
+        onOpen() {},
+        onAdd() {},
+      }),
+    );
+    assert(addRow.includes('0700.HK') && addRow.includes('腾讯控股'), 'a search row shows the symbol and the local name');
+    assert(/tm-result__add/.test(addRow) && !/disabled/.test(addRow), 'every search row carries an enabled + button');
+
+    const ownedRow = renderToString(
+      h(SearchRow, {
+        row: { symbol: '0700.HK', name: 'Tencent Holdings', market: 'HK' },
+        active: true,
+        owned: true,
+        onOpen() {},
+        onAdd() {},
+      }),
+    );
+    assert(/disabled/.test(ownedRow), 'a tracked symbol cannot be added twice');
+    assert(/tm-result--owned/.test(ownedRow), 'a tracked symbol is marked as already added');
+    assert(/\.tm-search__panel\s*\{[^}]*position:\s*absolute/.test(CSS), 'the result panel floats over the page');
+
+    // User request m00453: a coin is told apart from a stock with the same
+    // spelling by market, so `BTC` the coin and `BTC` the listed trust never share
+    // an "already added" flag (or a React key).
+    const cryptoRow = renderToString(
+      h(SearchRow, {
+        row: { symbol: 'BTC', name: 'Bitcoin', nameZh: '比特币', market: 'CRYPTO', exchange: 'CRYPTO', currency: 'USDT' },
+        active: false,
+        owned: false,
+        onOpen() {},
+        onAdd() {},
+      }),
+    );
+    assert(cryptoRow.includes('比特币') && cryptoRow.includes('CRYPTO'), 'a coin row names the asset and its market');
+    assert(!/disabled/.test(cryptoRow), 'the coin stays addable while the same-ticker stock is tracked');
+    assert(internals.trackKey({ symbol: 'BTC', market: 'CRYPTO' }) === 'CRYPTO:BTC', 'a coin is tracked by market + symbol');
+    assert(
+      internals.trackKey({ symbol: 'BTC', market: 'US' }) !== internals.trackKey({ symbol: 'BTC', market: 'CRYPTO' }),
+      'the same spelling on two markets is two instruments',
+    );
+
+    // The crypto tab adds from the tile itself, and only that tab does.
+    const coinTile = renderToString(
+      h(IndexCell, {
+        item: { symbol: 'BTC', name: 'Bitcoin', nameZh: '比特币', quote: { price: 77482.02, currency: 'USDT', changePct: 1.2, timestamp: Date.now() } },
+        market: 'CRYPTO',
+        onOpen() {},
+        onAdd() {},
+        owned: new Set(),
+      }),
+    );
+    assert(/tm-index__add/.test(coinTile), 'a crypto tile offers + to add the coin');
+    assert(!/tm-index__add/.test(renderToString(h(IndexCell, { item: { symbol: '^GSPC', quote: {} }, market: 'US', onOpen() {} }))), 'an index tile offers no add button');
+
+    // Regression (reported: the panel said "no matches" for AAPL even though the
+    // host answered): /search is enveloped as { data, meta } by service.envelope,
+    // so the rows are at payload.data.results. Reading payload.results renders an
+    // empty panel for a query that worked.
+    const enveloped = { data: { query: 'AAPL', results: [{ symbol: 'AAPL' }, { symbol: 'AAPL.TO' }], source: 'providers' }, meta: { stale: false } };
+    assert(internals.searchRowsOf(enveloped).length === 2, 'the enveloped answer must yield its rows');
+    assert(internals.searchRowsOf({ results: [{ symbol: 'AAPL' }] }).length === 1, 'a flattened answer still works');
+    assert(internals.searchRowsOf(null).length === 0 && internals.searchRowsOf({ data: {} }).length === 0, 'an empty answer yields no rows');
 
     setStore({ lang: 'zh', langSet: true });
     const zh = renderToString(h(TradingApp));
@@ -625,7 +720,7 @@ await check('universe: the listing browser covers US/HK/CN/JP/crypto and localis
       h(UniverseRow, {
         row: { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc Class B', market: 'US', exchange: 'NYSE', industry: '保险' },
         onAdd() {},
-        owned: new Set(['BRK.B']),
+        owned: new Set(['US:BRK.B']),
       }),
     );
     assert(row.includes('BRK.B'), 'class shares keep their display spelling');
@@ -636,7 +731,7 @@ await check('universe: the listing browser covers US/HK/CN/JP/crypto and localis
       h(UniverseRow, {
         row: { symbol: '80700.HK', name: '腾讯控股-R', market: 'HK', exchange: 'HKEX' },
         onAdd() {},
-        owned: new Set(['0700.HK']),
+        owned: new Set(['HK:0700.HK']),
       }),
     );
     assert(addable.includes('80700.HK'), 'the RMB counter keeps its own symbol');
@@ -652,16 +747,16 @@ await check('theme: the header switch flips white-on-black / black-on-white', as
   const snapshot = { ...store.get() };
   try {
     // User request m11109: 黑底白字 ↔ 白底黑字, one active scheme at a time.
-    setStore({ open: true, view: 'home', symbol: null, lang: 'en', langSet: true, platformLang: 'en', theme: 'dark', themeSet: true });
+    setStore({ view: 'home', symbol: null, lang: 'en', langSet: true, platformLang: 'en', theme: 'dark', themeSet: true });
     const dark = renderToString(h(TradingApp));
-    assert(dark.includes('tm-scheme--dark'), 'the dark scheme class must be on the overlay root');
+    assert(dark.includes('tm-scheme--dark'), 'the dark scheme class must be on the page root');
     assert(!dark.includes('tm-scheme--light'), 'the two schemes must never be applied at once');
     assert(dark.includes('>Dark<') && dark.includes('>Light<'), 'both scheme buttons must be offered');
     assert((dark.match(/tm-thm--active/g) || []).length === 1, 'exactly one scheme may be active');
 
     setStore({ theme: 'light' });
     const light = renderToString(h(TradingApp));
-    assert(light.includes('tm-scheme--light'), 'switching to light must repaint the overlay root');
+    assert(light.includes('tm-scheme--light'), 'switching to light must repaint the page root');
     assert(!light.includes('tm-scheme--dark'), 'the dark class must be dropped when light is active');
 
     assert(effectiveTheme({ theme: null }) === 'dark', 'dark is the default scheme');
@@ -757,15 +852,15 @@ await check('theme: every panel surface is painted opaque from the scheme palett
   const css = styleTags[before].textContent;
   styleTags.length = before;
 
-  assert(/\.tm-layer \{[^}]*--tm-bg: #000000;/.test(css), 'the default (dark) palette must be pure black');
-  assert(/\.tm-layer \{[^}]*--tm-text: #ffffff;/.test(css), 'the dark scheme must use pure white text');
+  assert(/\.tm-page \{[^}]*--tm-bg: #000000;/.test(css), 'the default (dark) palette must be pure black');
+  assert(/\.tm-page \{[^}]*--tm-text: #ffffff;/.test(css), 'the dark scheme must use pure white text');
   assert(
-    /\.tm-layer\.tm-scheme--light \{[^}]*--tm-bg: #ffffff;[^}]*--tm-text: #101014;/.test(css),
+    /\.tm-page\.tm-scheme--light \{[^}]*--tm-bg: #ffffff;[^}]*--tm-text: #101014;/.test(css),
     'the light palette must be white with near-black text',
   );
-  assert(/\.tm-window \{[^}]*background: var\(--tm-bg, #000000\)/.test(css), 'the window must paint the scheme colour');
-  assert(!/\.tm-window \{[^}]*background: transparent/.test(css), 'the window must never be transparent');
-  assert(!/\.tm-window \{[^}]*var\(--dsw-alias/.test(css), 'the window must not depend on a host alias token');
+  assert(/\.tm-page \{[^}]*background: var\(--tm-bg, #000000\)/.test(css), 'the page must paint the scheme colour');
+  assert(!/\.tm-page \{[^}]*background: transparent/.test(css), 'the page must never be transparent');
+  assert(!/\.tm-page \{[^}]*var\(--dsw-alias/.test(css), 'the page must not depend on a host alias token');
   assert(!/\.tm-status__pop \{[^}]*var\(--dsw-alias/.test(css), 'the status popover must not depend on a host alias token');
   assert(/--dsw-alias-bg-overlay: var\(--tm-overlay\)/.test(css), 'host alias names must be mapped onto the panel palette');
   // Anything the panel paints must resolve inside the panel: an alias token a
